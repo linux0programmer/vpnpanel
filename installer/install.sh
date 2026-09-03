@@ -370,6 +370,7 @@ netplan_extra_wans() {
         cat << EOF
     $w:
       dhcp4: true
+      dhcp-identifier: mac
       dhcp4-overrides:
         use-dns: false
         route-metric: 200
@@ -526,6 +527,7 @@ network:
   ethernets:
     $INPUT_INTERFACE:
       dhcp4: true
+      dhcp-identifier: mac
       dhcp4-overrides:
         use-dns: false
       nameservers:
@@ -1359,6 +1361,14 @@ do_remove() {
 
         [ -f /etc/dnsmasq.conf.original.backup ] && mv /etc/dnsmasq.conf.original.backup /etc/dnsmasq.conf
 
+        log_step "Возврат сети к исходной конфигурации..."
+        netplan apply 2>/dev/null || true
+        for _ in 1 2 3 4 5; do
+            ip route show default 2>/dev/null | grep -q . && break
+            sleep 1
+        done
+        log_info "Маршрут по умолчанию: $(ip route show default 2>/dev/null | head -1 | cut -c1-60)"
+
         log_step "Восстановление DNS..."
         systemctl unmask systemd-resolved 2>/dev/null || true
         systemctl enable --now systemd-resolved 2>/dev/null || true
@@ -1375,6 +1385,9 @@ do_remove() {
         apt_run 300 autoclean -y -qq 2>/dev/null || true
         rm -rf /etc/apache2 /var/log/apache2
 
+        rm -f /etc/resolv.conf
+        ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf 2>/dev/null || true
+
         local fallback_iface
         fallback_iface=$(ip -o link show 2>/dev/null | awk -F': ' '$2 != "lo" {print $2; exit}')
         [ -z "$fallback_iface" ] && fallback_iface="eth0"
@@ -1386,6 +1399,7 @@ network:
   ethernets:
     $fallback_iface:
       dhcp4: true
+      dhcp-identifier: mac
 NETPLAN_EOF
             chmod 600 /etc/netplan/00-default.yaml
             log_warn "Создан базовый netplan для $fallback_iface"
