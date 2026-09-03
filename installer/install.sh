@@ -689,30 +689,43 @@ drop_stale_apache_config() {
     rm -rf /etc/apache2
 }
 
+restore_apache_conffiles() {
+    log_warn "Конфигурация apache2 отсутствует — возвращаю её из пакета"
+    apt_run 300 update -qq || true
+    timeout 900 apt-get install -y --reinstall \
+        -o Dpkg::Options::="--force-confmiss" \
+        -o Dpkg::Options::="--force-confdef" \
+        -o Dpkg::Options::="--force-confold" apache2 </dev/null || true
+}
+
 repair_apache_mpm() {
     apache_installed && return 0
 
-    log_warn "apache2 не настроился — разбираю конфликт MPM"
-    log_warn "postinst успел включить mpm_prefork и упал на ещё не распакованном php"
+    log_warn "apache2 не настроился — привожу его конфигурацию в порядок"
+
+    mkdir -p "$WEB_DIR"
+    mkdir -p /etc/apache2/mods-enabled
 
     rm -f /etc/apache2/mods-enabled/php*.load /etc/apache2/mods-enabled/php*.conf
-    a2dismod -f mpm_prefork >/dev/null 2>&1 || true
-    a2dismod -f mpm_event >/dev/null 2>&1 || true
-    a2enmod mpm_event >/dev/null 2>&1 || true
+    rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf
+
+    [ -f /etc/apache2/mods-available/mpm_event.load ] || restore_apache_conffiles
+
+    if [ -f /etc/apache2/mods-available/mpm_event.load ]; then
+        a2enmod mpm_event >/dev/null 2>&1 || true
+    else
+        log_warn "mods-available/mpm_event.load так и не появился"
+    fi
 
     timeout 300 dpkg --configure -a </dev/null || true
+
     if apache_installed; then
-        log_info "apache2 настроен после ремонта MPM"
+        log_info "apache2 настроен"
         return 0
     fi
 
-    log_warn "Переустанавливаю apache2 с чистой конфигурацией"
-    rm -rf /etc/apache2
-    timeout 600 apt-get install -y --reinstall apache2 </dev/null || true
-    timeout 600 apt-get install -y libapache2-mod-php php </dev/null || true
-    timeout 300 dpkg --configure -a </dev/null || true
-
-    apache_installed
+    log_warn "Не помогло — apache2 остаётся ненастроенным"
+    return 1
 }
 
 install_packages() {
@@ -767,6 +780,8 @@ install_packages() {
     chattr -i /etc/resolv.conf 2>/dev/null || true
     local apt_opts=(-y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold")
 
+    mkdir -p "$WEB_DIR"
+
     drop_stale_apache_config
     log_step "Ставлю apache2 отдельно, до php..."
     apt_run 900 install "${apt_opts[@]}" apache2 || log_warn "apache2 отдельным заходом не встал — пробую вместе со всеми"
@@ -779,6 +794,7 @@ install_packages() {
         apt_run 600 -f install -y || true
         apache_installed || repair_apache_mpm || true
         apt-get clean
+        apt_run 300 update -qq || true
         apt_run 1800 install "${apt_opts[@]}" "${PACKAGES_TO_INSTALL[@]}" || true
     fi
 
@@ -1435,6 +1451,7 @@ do_remove() {
     chattr -i /etc/resolv.conf 2>/dev/null || true
 
     rm -rf "$WEB_DIR" "$VPN_CONFIGS_DIR"
+    mkdir -p "$WEB_DIR"
     if [ -d /var/log/vpn-panel ]; then
         find /var/log/vpn-panel -mindepth 1 ! -name 'install.log' -exec rm -rf {} + 2>/dev/null || true
     fi
