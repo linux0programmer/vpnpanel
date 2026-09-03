@@ -683,6 +683,7 @@ apache_present() {
 
 drop_stale_apache_config() {
     apache_present && return 0
+    [ -n "$(php_module_pkg)" ] && return 0
     [ -d /etc/apache2 ] || return 0
     log_warn "Найден /etc/apache2 от прошлой установки, а пакета нет — убираю"
     log_warn "иначе postinst apache2 споткнётся о включённые модули, которых уже нет"
@@ -693,34 +694,57 @@ apache_conffiles_present() {
     [ -f /etc/apache2/mods-available/mpm_event.load ]
 }
 
-restore_apache_conffiles() {
-    log_warn "Конфигурация apache2 отсутствует — возвращаю её из пакета"
-    apt_run 300 update -qq || true
+php_module_pkg() {
+    dpkg-query -W -f='${Package} ${Status}\n' 'libapache2-mod-php[0-9]*' 2>/dev/null \
+        | awk '$2 == "install" { print $1; exit }'
+}
+
+php_module_conffiles_present() {
+    local pkg ver
+    pkg=$(php_module_pkg)
+    [ -n "$pkg" ] || return 0
+    ver=${pkg#libapache2-mod-php}
+    [ -f "/etc/apache2/mods-available/php${ver}.load" ]
+}
+
+restore_pkg_conffiles() {
+    local pkg="$1" tmpdir deb rc=1
+    log_warn "Возвращаю conffiles пакета $pkg"
 
     timeout 900 apt-get install -y --reinstall \
         -o Dpkg::Options::="--force-confmiss" \
         -o Dpkg::Options::="--force-confdef" \
-        -o Dpkg::Options::="--force-confold" apache2 </dev/null || true
+        -o Dpkg::Options::="--force-confold" "$pkg" </dev/null && rc=0
 
-    apache_conffiles_present && { log_info "Конфигурация apache2 восстановлена"; return 0; }
-
-    log_warn "apt не переустанавливает полунастроенный пакет — забираю deb напрямую"
-    local tmpdir deb
-    tmpdir=$(mktemp -d /var/tmp/vpn-panel-apache.XXXXXX) || return 1
-    chmod 755 "$tmpdir"
-
-    if ( cd "$tmpdir" && timeout 300 apt-get download apache2 </dev/null ); then
-        deb=$(find "$tmpdir" -maxdepth 1 -name 'apache2_*.deb' | head -1)
-        if [ -n "$deb" ]; then
-            log_info "Распаковываю $(basename "$deb")"
-            timeout 300 dpkg -i --force-confmiss "$deb" </dev/null || true
+    if [ "$rc" -ne 0 ]; then
+        log_warn "apt не переустанавливает полунастроенный пакет — забираю deb напрямую"
+        tmpdir=$(mktemp -d /var/tmp/vpn-panel-deb.XXXXXX) || return 1
+        chmod 755 "$tmpdir"
+        if ( cd "$tmpdir" && timeout 300 apt-get download "$pkg" </dev/null ); then
+            deb=$(find "$tmpdir" -maxdepth 1 -name '*.deb' | head -1)
+            if [ -n "$deb" ]; then
+                log_info "Распаковываю $(basename "$deb")"
+                timeout 300 dpkg -i --force-confmiss "$deb" </dev/null || true
+            fi
         else
-            log_warn "deb скачался, но файла нет — пропускаю"
+            log_warn "Не удалось скачать deb пакета $pkg"
         fi
-    else
-        log_warn "Не удалось скачать deb apache2"
+        rm -rf "$tmpdir"
     fi
-    rm -rf "$tmpdir"
+    return 0
+}
+
+restore_apache_conffiles() {
+    local php_pkg
+    apt_run 300 update -qq || true
+
+    apache_conffiles_present || restore_pkg_conffiles apache2
+
+    php_pkg=$(php_module_pkg)
+    if [ -n "$php_pkg" ] && ! php_module_conffiles_present; then
+        log_warn "php-модуль установлен, но его conffiles в /etc/apache2 отсутствуют"
+        restore_pkg_conffiles "$php_pkg"
+    fi
 
     apache_conffiles_present
 }
@@ -736,11 +760,12 @@ repair_apache_mpm() {
     rm -f /etc/apache2/mods-enabled/php*.load /etc/apache2/mods-enabled/php*.conf
     rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf
 
-    apache_conffiles_present || restore_apache_conffiles
+    if ! apache_conffiles_present || ! php_module_conffiles_present; then
+        restore_apache_conffiles || true
+        rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf
+    fi
 
-    if apache_conffiles_present; then
-        a2enmod mpm_event >/dev/null 2>&1 || true
-    else
+    if ! apache_conffiles_present; then
         log_warn "mods-available/mpm_event.load так и не появился"
     fi
 
