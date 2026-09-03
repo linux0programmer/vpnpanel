@@ -8,10 +8,16 @@
 ## Команда для запуска установщика
 
 ```bash
-git clone https://github.com/linux0programmer/vpnpanel.git && sudo bash vpnpanel/installer/install.sh
+curl -fsSL https://raw.githubusercontent.com/linux0programmer/vpnpanel/main/installer/install.sh -o install.sh && sudo bash install.sh
 ```
 
 15 минут — и у вас VPN-роутер с веб-панелью на `http://10.10.1.1/`.
+
+Скачивается один файл — остальное установщик забирает сам на четвёртом шаге, до изменения сетевых настроек. Если нужен весь репозиторий (например, чтобы держать рядом `diagnostic.sh`):
+
+```bash
+git clone https://github.com/linux0programmer/vpnpanel.git && sudo bash vpnpanel/installer/install.sh
+```
 
 ---
 

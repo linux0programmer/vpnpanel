@@ -16,8 +16,15 @@
 Нужны Ubuntu 22.04/24.04 и минимум две сетевые карты: одна смотрит к провайдеру (WAN), вторая — в локальную сеть (LAN).
 
 ```bash
-git clone https://github.com/linux0programmer/vpnpanel.git
-sudo bash vpnpanel/installer/install.sh
+curl -fsSL https://raw.githubusercontent.com/linux0programmer/vpnpanel/main/installer/install.sh -o install.sh && sudo bash install.sh
+```
+
+Больше ничего скачивать не нужно: установщик сам заберёт код панели — и сделает это **до** того, как тронет сетевые настройки, чтобы неудачная конфигурация не оставила сервер без сети и без кода одновременно.
+
+Другие способы, если первый не подходит:
+
+```bash
+git clone https://github.com/linux0programmer/vpnpanel.git && sudo bash vpnpanel/installer/install.sh
 ```
 
 Если на сервере нет доступа к GitHub — скопируйте каталог проекта любым способом и запустите `installer/install.sh` из него: панель возьмётся из соседней папки `panel/`, сеть для установки не нужна.

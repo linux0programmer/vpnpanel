@@ -40,6 +40,9 @@ STEP_LOG=()
 INPUT_INTERFACE=""
 WAN_INTERFACES=""
 INSTALL_SOURCE=""
+PANEL_SRC=""
+SRC_DIR="/opt/vpn-panel/src"
+RAW_URL="https://raw.githubusercontent.com/linux0programmer/vpnpanel/main/installer/install.sh"
 OUTPUT_INTERFACE=""
 
 export DEBIAN_FRONTEND=noninteractive
@@ -76,7 +79,13 @@ log_step()  { echo -e "${CYAN}[*]${NC} $1" >&3; }
 
 ask_var() {
     echo -ne "$1" >&3
-    read -r "$2"
+    if [ -t 0 ]; then
+        read -r "$2"
+    elif [ -r /dev/tty ]; then
+        read -r "$2" < /dev/tty
+    else
+        error_exit "Нет терминала для вопросов установщика. Скачайте файл и запустите его: curl -fsSL $RAW_URL -o install.sh && sudo bash install.sh"
+    fi
     echo "" >&3
 }
 
@@ -803,28 +812,30 @@ configure_vpn() {
 }
 
 panel_source_local() {
-    local here
-    here=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd) || return 1
+    local self here candidate
+    self="${BASH_SOURCE[0]}"
+    [ -f "$self" ] || return 1
+    here=$(cd "$(dirname "$self")" 2>/dev/null && pwd) || return 1
     for candidate in "$here/../panel" "$here/panel"; do
         [ -f "$candidate/cabinet.php" ] && { (cd "$candidate" && pwd); return 0; }
     done
     return 1
 }
 
-install_web_panel() {
-    log_step "Установка веб-панели..."
+fetch_sources() {
+    log_step "Получение кода панели..."
 
     local local_src=""
     local_src=$(panel_source_local) || local_src=""
 
-    [ -d "$WEB_DIR" ] && rm -rf "$WEB_DIR"
-
     if [ -n "$local_src" ]; then
-        log_info "Ставлю панель из локальной копии: $local_src"
-        mkdir -p "$WEB_DIR"
-        cp -a "$local_src/." "$WEB_DIR"/ || error_exit "Не удалось скопировать панель из $local_src"
+        PANEL_SRC="$local_src"
         INSTALL_SOURCE="local"
-    elif printf '%s' "$GIT_REPO" | grep -q "OWNER/REPO"; then
+        log_info "Код панели лежит рядом с установщиком: $PANEL_SRC"
+        return 0
+    fi
+
+    if printf '%s' "$GIT_REPO" | grep -q "OWNER/REPO"; then
         {
             echo ""
             echo -e "${RED}[✗] Не задан репозиторий панели.${NC}"
@@ -837,19 +848,37 @@ install_web_panel() {
             echo ""
         } >&3
         error_exit "Установка остановлена: неоткуда взять код панели"
-    else
-        local repo_src="/opt/vpn-panel/src" repo_panel
-        mkdir -p "$(dirname "$repo_src")"
-        [ -d "$repo_src" ] && rm -rf "$repo_src"
-        git clone --quiet "$GIT_REPO" "$repo_src" || error_exit "Ошибка git clone $GIT_REPO"
-        repo_panel="$repo_src"
-        [ -f "$repo_src/panel/cabinet.php" ] && repo_panel="$repo_src/panel"
-        [ -f "$repo_panel/cabinet.php" ] || error_exit "В репозитории нет кода панели (cabinet.php)"
-        log_info "Ставлю панель из репозитория: $GIT_REPO"
-        mkdir -p "$WEB_DIR"
-        cp -a "$repo_panel/." "$WEB_DIR"/ || error_exit "Не удалось скопировать панель из $repo_panel"
-        INSTALL_SOURCE="git"
     fi
+
+    if ! command -v git >/dev/null 2>&1; then
+        log_info "git ещё не установлен — ставлю его первым"
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git >/dev/null 2>&1 || \
+            error_exit "Не удалось поставить git — скачать код панели нечем"
+    fi
+
+    mkdir -p "$(dirname "$SRC_DIR")"
+    [ -d "$SRC_DIR" ] && rm -rf "$SRC_DIR"
+    log_info "Клонирую $GIT_REPO -> $SRC_DIR"
+    git clone --quiet "$GIT_REPO" "$SRC_DIR" || error_exit "Ошибка git clone $GIT_REPO"
+
+    PANEL_SRC="$SRC_DIR"
+    [ -f "$SRC_DIR/panel/cabinet.php" ] && PANEL_SRC="$SRC_DIR/panel"
+    [ -f "$PANEL_SRC/cabinet.php" ] || error_exit "В репозитории нет кода панели (cabinet.php)"
+    INSTALL_SOURCE="git"
+    log_info "Код получен до того, как менялись сетевые настройки"
+    return 0
+}
+
+install_web_panel() {
+    log_step "Установка веб-панели..."
+
+    [ -n "$PANEL_SRC" ] || error_exit "Код панели не получен — шаг fetch_sources не отработал"
+    [ -f "$PANEL_SRC/cabinet.php" ] || error_exit "В $PANEL_SRC нет cabinet.php"
+
+    [ -d "$WEB_DIR" ] && rm -rf "$WEB_DIR"
+    mkdir -p "$WEB_DIR"
+    log_info "Разворачиваю панель из $PANEL_SRC"
+    cp -a "$PANEL_SRC/." "$WEB_DIR"/ || error_exit "Не удалось скопировать панель из $PANEL_SRC"
 
     rm -rf "$WEB_DIR/.git" "$WEB_DIR/.github"
 
@@ -1162,6 +1191,7 @@ full_install() {
         "check_os"
         "check_internet"
         "check_packages"
+        "fetch_sources"
         "select_interfaces"
         "configure_network"
         "check_internet"
