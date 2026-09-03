@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_VERSION=5
+SCRIPT_VERSION=1
 VERSION_FILE="/var/www/version"
 SETTINGS_FILE="/var/www/settings"
 WEB_DIR="/var/www/html"
@@ -40,6 +40,7 @@ STEP_LOG=()
 INPUT_INTERFACE=""
 WAN_INTERFACES=""
 INSTALL_SOURCE=""
+SSH_IFACE=""
 PANEL_SRC=""
 SRC_DIR="/opt/vpn-panel/src"
 RAW_URL="https://raw.githubusercontent.com/linux0programmer/vpnpanel/main/installer/install.sh"
@@ -65,8 +66,8 @@ chmod 644 "$LOG_FILE" 2>/dev/null
 exec 7>&1
 exec 8>&2
 
-exec 3> >(stdbuf -oL tee >(stdbuf -oL sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' >> "$LOG_FILE") >&7)
-exec 4> >(stdbuf -oL tee >(stdbuf -oL sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' >> "$LOG_FILE") >&8)
+exec 3> >(stdbuf -oL tee --output-error=warn >(stdbuf -oL sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' >> "$LOG_FILE") >&7)
+exec 4> >(stdbuf -oL tee --output-error=warn >(stdbuf -oL sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' >> "$LOG_FILE") >&8)
 
 exec 1>>"$LOG_FILE" 2>&1
 
@@ -435,8 +436,32 @@ EOF
     netplan_extra_wans >> "$NETPLAN_FILE"
 }
 
+ssh_session_iface() {
+    local server_ip
+    [ -z "$SSH_CONNECTION" ] && return 1
+    server_ip=$(printf '%s' "$SSH_CONNECTION" | awk '{print $3}')
+    [ -z "$server_ip" ] && return 1
+    ip -o -4 addr show 2>/dev/null | awk -v want="$server_ip" '$4 ~ "^"want"/" {print $2; exit}'
+}
+
 configure_network() {
     log_step "Настройка сети..."
+
+    SSH_IFACE=$(ssh_session_iface) || SSH_IFACE=""
+    if [ -n "$SSH_IFACE" ] && [ "$SSH_IFACE" = "$INPUT_INTERFACE" ]; then
+        {
+            echo ""
+            echo -e "${YELLOW}[!] Вы подключены по SSH через $INPUT_INTERFACE — это и есть WAN,${NC}"
+            echo -e "${YELLOW}    который сейчас будет перенастроен. Сессия оборвётся.${NC}"
+            echo ""
+            echo -e "${WHITE}    Вариант 3 не трогает WAN — соединение переживёт установку.${NC}"
+            echo -e "${WHITE}    Для вариантов 1 и 2 установщик продолжит работу и без сессии:${NC}"
+            echo -e "${WHITE}    вопросов дальше не будет, ход установки — в ${CYAN}$LOG_FILE${NC}"
+            echo -e "${WHITE}    После переподключения: ${CYAN}tail -f $LOG_FILE${NC}"
+            echo ""
+        } >&3
+    fi
+
     {
         echo ""
         echo "  1) DHCP на WAN"
@@ -553,6 +578,12 @@ EOF
     fi
 
     chmod 600 "$NETPLAN_FILE"
+
+    if [ -n "$SSH_IFACE" ] && [ "$SSH_IFACE" = "$INPUT_INTERFACE" ]; then
+        trap '' HUP PIPE
+        log_warn "Дальше вопросов нет — установка переживёт обрыв SSH"
+    fi
+
     if ! netplan generate; then
         restore_disabled_netplan
         error_exit "Ошибка netplan generate — отключённые конфиги возвращены на место"
@@ -565,6 +596,14 @@ EOF
     echo -ne "    Ожидание сети" >&3
     for i in {1..5}; do sleep 1; echo -n "." >&3; done
     echo "" >&3
+
+    local wan_now
+    wan_now=$(ip -o -4 addr show "$INPUT_INTERFACE" 2>/dev/null | awk '{print $4}' | head -1)
+    if [ -n "$wan_now" ]; then
+        log_info "Адрес $INPUT_INTERFACE: $wan_now"
+    else
+        log_warn "У $INPUT_INTERFACE пока нет адреса — DHCP может ещё отвечать"
+    fi
 
     configure_dns_early
 }

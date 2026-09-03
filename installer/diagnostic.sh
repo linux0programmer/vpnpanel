@@ -66,7 +66,7 @@ fi
 [ "$QUIET" -eq 0 ] && {
     echo ""
     echo -e "${CYAN}╔══════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║       VPN Server v5 — Диагностика            ║${NC}"
+    echo -e "${CYAN}║        VPN Server — Диагностика              ║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════╝${NC}"
     echo -e "${GRAY}  Запущено: $(date '+%Y-%m-%d %H:%M:%S')${NC}"
     echo -e "${GRAY}  Hostname: $(hostname)${NC}"
@@ -358,9 +358,9 @@ fi
 
 if [ -f /etc/systemd/system/vpn-healthcheck.service ]; then
     if grep -q "Type=simple" /etc/systemd/system/vpn-healthcheck.service; then
-        pass "vpn-healthcheck.service: Type=simple (v5 daemon mode)"
+        pass "vpn-healthcheck.service: Type=simple"
     else
-        fail "vpn-healthcheck.service: НЕ Type=simple (старый v3/v4 oneshot формат)"
+        fail "vpn-healthcheck.service: НЕ Type=simple"
     fi
 
     if grep -q "ExecStart=/var/www/html/vpn-healthcheck.sh" /etc/systemd/system/vpn-healthcheck.service; then
@@ -452,13 +452,7 @@ else
         if [ -d "$WEB_DIR/$d" ]; then
             pass "$WEB_DIR/$d/ присутствует"
         else
-            fail "$WEB_DIR/$d/ ОТСУТСТВУЕТ (v5 структура нарушена)"
-        fi
-    done
-
-    for old in about.php openvpn.php ping.php settings.php status_check.php wireguard.php; do
-        if [ -f "$WEB_DIR/$old" ]; then
-            warn "Остаток v4: $WEB_DIR/$old присутствует (должен был быть удалён)"
+            fail "$WEB_DIR/$d/ ОТСУТСТВУЕТ (структура панели нарушена)"
         fi
     done
 fi
@@ -598,7 +592,7 @@ if command -v php >/dev/null 2>&1; then
         if php -m 2>/dev/null | grep -qi "^${ext}$"; then
             pass "php-$ext установлен"
         else
-            fail "php-$ext НЕ установлен (необходимо для v5)"
+            fail "php-$ext НЕ установлен (нужен панели)"
         fi
     done
 else
@@ -760,10 +754,6 @@ if [ -f /var/www/settings ]; then
             warn "settings: ключ '$key' отсутствует"
         fi
     done
-
-    if grep -q "^try_primary_first=" /var/www/settings; then
-        warn "settings: легаси ключ 'try_primary_first' присутствует (должен был быть удалён в v5)"
-    fi
 else
     fail "/var/www/settings ОТСУТСТВУЕТ"
 fi

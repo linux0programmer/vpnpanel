@@ -151,7 +151,7 @@ curl -O https://raw.githubusercontent.com/linux0programmer/vpnpanel/main/install
 │   └── img/                       Логотипы, favicon, графика
 │
 ├── vpn-healthcheck.sh           Health Check daemon (systemd Type=simple)
-└── update.sh                    Скрипт миграций v0 → v5 (запускается через cron)
+└── update.sh                    Миграции и sanity-check (запускает vpn-panel-deploy)
 ```
 
 ---
@@ -427,52 +427,32 @@ $cssVer = '5.6.5';
 
 `update.sh` применяет миграции и sanity-check блоки. Сам он код не выкладывает и git не трогает — этим занимается `vpn-panel-deploy`, который вызывает `update.sh` уже после того, как новая версия оказалась в `/var/www/html`.
 
-Запустить только миграции: `cd /var/www/html && sudo SKIP_GIT=1 ./update.sh`. Полный деплой: `sudo vpn-panel-deploy deploy`.
+Запустить только миграции: `cd /var/www/html && sudo AUTO_RUN=1 ./update.sh`. Полный деплой: `sudo vpn-panel-deploy deploy`.
 
 ### Архитектура
 
 ```bash
 CURRENT_VERSION=$(cat /var/www/version)
-TARGET_VERSION=5
+SCRIPT_VERSION=1
 
-# Версионные блоки (выполняются один раз на каждой версии)
-if [ "$CURRENT_VERSION" -lt 1 ]; then
-    # ... v1 миграции
-fi
+# Версионных блоков пока нет — продукт в первой версии.
+# Как только понадобится починить уже установленные серверы:
+#
+# if [ "$CURRENT_VERSION" -lt 2 ]; then
+#     ... что нужно доделать на серверах с версией 1
+# fi
+#
+# и SCRIPT_VERSION поднимается до 2.
 
-if [ "$CURRENT_VERSION" -lt 2 ]; then
-    # ... v2 миграции
-fi
-
-# ... и так далее до v5
-
-# Sanity-check блоки (выполняются КАЖДЫЙ раз)
+# Sanity-check блоки — выполняются КАЖДЫЙ раз
 # - проверка прав
 # - валидация /etc/vpn-panel.conf
 # - восстановление Kill Switch
 # - sync HC daemon при изменении md5
 ```
 
-### Что делают v5 миграции
-
-Полный список изменений v4 → v5:
-
-- Sudoers cleanup (`/bin/bash` удалён, добавлены reboot/poweroff)
-- Создание директории `/var/www/vpn-configs/` с правами 770 root:www-data
-- Миграция legacy конфигов в новый формат с `configs.json`
-- Kill Switch FORWARD chain + NAT MASQUERADE
-- HC daemon Type=simple (вместо oneshot из v4)
-- Apache модули (headers, expires, rewrite, deflate, proxy, proxy_http)
-- AllowOverride All, ServerTokens Prod
-- Установка shellinabox + `/shell/` proxy
-- Создание `/etc/vpn-panel.conf` (WAN, LAN, VERSION)
-- VOIP-оптимизации: conntrack max=524288, UDP timeouts, SIP ALG отключён
-- DHCP lease 12h → 72h
-- dnsmasq лимиты для 400+ устройств: dns-forward-max=8192, dhcp-lease-max=2000, cache-size=50000
-- INPUT chain rate-limit (HTTP 60/мин, SSH 10/мин) + LAN whitelist
-- PAM faillock soft-режим (deny=30, unlock=60s)
-- PHP `mbstring` extension
-- Cron launcher переведён на `vpn-panel-deploy auto`, легаси-скрипты удаляются
+Всё, что нужно новому серверу, делает установщик. `update.sh` существует для
+серверов, которые уже работают: он приводит их конфигурацию к текущему коду.
 
 ### Sanity-check блоки
 
@@ -487,7 +467,6 @@ fi
 | Sudoers | `visudo -c` валидация, добавление недостающих правил |
 | PHP extensions | Установка недостающих (yaml, mbstring) |
 | Cron launcher | Перевод крона на `vpn-panel-deploy`, удаление легаси-скриптов |
-| Legacy files cleanup | Удаление залегших файлов из v3/v4 |
 
 ### FD 3/4 tee logging
 
@@ -591,7 +570,7 @@ fi
 
 ### Workflow
 
-1. Установить v5 на тестовый сервер через [linux0programmer/vpnpanel установщик](https://github.com/linux0programmer/vpnpanel)
+1. Установить на тестовый сервер через [установщик](../installer/README.md)
 2. SSH или веб-терминал → `cd /var/www/html`
 3. Это **и есть** git working copy этого репозитория
 4. Делать изменения, тестировать в браузере
@@ -794,7 +773,7 @@ if (result.ok) {
 В репозитории есть два диагностический скрипт ([linux0programmer/vpnpanel](https://github.com/linux0programmer/vpnpanel/tree/main/docs/diagnostic.md)):
 
 ```bash
-# Общая диагностика v5 (~80 проверок)
+# Общая диагностика (~80 проверок)
 curl -O https://raw.githubusercontent.com/linux0programmer/vpnpanel/main/installer/diagnostic.sh && sudo bash diagnostic.sh
 ```
 
@@ -883,7 +862,7 @@ sudo tail -f /var/log/vpn-panel/events.log
 ### Полная диагностика
 
 ```bash
-# Общая диагностика v5 (~80 проверок)
+# Общая диагностика (~80 проверок)
 curl -O https://raw.githubusercontent.com/linux0programmer/vpnpanel/main/installer/diagnostic.sh && sudo bash diagnostic.sh
 ```
 

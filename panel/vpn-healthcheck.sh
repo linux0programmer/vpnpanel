@@ -725,7 +725,7 @@ main_loop() {
     load_interfaces
     LAST_IFACE_LOAD=$(date +%s)
 
-    log "INFO" "Health Check v5 daemon запущен"
+    log "INFO" "Health Check daemon запущен"
 
     trap 'log "INFO" "Daemon остановлен"; exit 0' TERM INT
 

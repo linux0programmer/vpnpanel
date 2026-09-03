@@ -243,7 +243,7 @@ sync_to_web() {
 run_migrations() {
     [ -f "$WEB_DIR/update.sh" ] || { log WARN "update.sh отсутствует — миграции пропущены"; return 0; }
     chmod +x "$WEB_DIR/update.sh"
-    ( cd "$WEB_DIR" && SKIP_GIT=1 ./update.sh >> "$LOG" 2>&1 )
+    ( cd "$WEB_DIR" && AUTO_RUN=1 ./update.sh >> "$LOG" 2>&1 )
     local rc=$?
     [ "$rc" -ne 0 ] && log ERROR "миграции завершились с кодом $rc"
     return $rc
@@ -513,11 +513,11 @@ vpn-panel-deploy <команда>
 Настройки в /etc/vpn-panel.conf:
   REPO_URL=...       откуда тянуть код
   CHANNEL=stable     stable — последний тег vN, edge — origin/main
-  PINNED_TAG=v6      развернуть строго этот тег и не обновляться дальше
+  PINNED_TAG=v1      развернуть строго этот тег и не обновляться дальше
   VERIFY_TAGS=1      требовать подписанный тег (git verify-tag)
 
 Управление парком — файл release.conf в ветке main репозитория:
-  stable.tag=v6      что разворачивать на канале
+  stable.tag=v1      что разворачивать на канале
   stable.hold=1      остановить выкатку на всех серверах канала
   stable.rollout=25  выкатывать только на 25% серверов (канарка)
   stable.rollback=1  считать это откатом: номер схемы опустится до версии кода
