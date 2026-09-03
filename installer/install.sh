@@ -47,6 +47,8 @@ RAW_URL="https://raw.githubusercontent.com/linux0programmer/vpnpanel/main/instal
 OUTPUT_INTERFACE=""
 
 export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
 
 LOG_FILE="/var/log/vpn-panel/install.log"
 MAIN_PID=$BASHPID
@@ -139,6 +141,16 @@ check_os() {
     log_info "ОС: Ubuntu $os_version"
 }
 
+apt_run() {
+    local secs="$1"; shift
+    local rc=0
+    timeout "$secs" apt-get "$@" </dev/null || rc=$?
+    if [ "$rc" -eq 124 ]; then
+        log_warn "apt-get $1: превышен лимит ${secs}с, команда прервана"
+    fi
+    return $rc
+}
+
 pkg_available() {
     apt-cache policy "$1" 2>/dev/null | grep -qE '^[[:space:]]*Candidate:[[:space:]]*[^([:space:]]'
 }
@@ -146,7 +158,7 @@ pkg_available() {
 check_packages() {
     log_step "Проверка доступности пакетов в репозиториях..."
 
-    apt-get update -qq 2>/dev/null || log_warn "apt-get update не отработал — проверка может быть неточной"
+    apt_run 300 update -qq 2>/dev/null || log_warn "apt-get update не отработал — проверка может быть неточной"
 
     local pkg missing_required=() missing_optional=()
     for pkg in "${PACKAGES_REQUIRED[@]}"; do
@@ -636,14 +648,14 @@ install_packages() {
 
     if [ -n "$(ls -A /var/lib/dpkg/updates 2>/dev/null)" ] || [ -n "$(dpkg --audit 2>&1)" ]; then
         log_warn "Восстановление dpkg..."
-        timeout 120 dpkg --configure -a --force-confdef --force-confold 2>/dev/null || true
-        timeout 120 apt-get -f install -y -qq 2>/dev/null || true
+        timeout 120 dpkg --configure -a --force-confdef --force-confold </dev/null 2>/dev/null || true
+        timeout 120 apt-get -f install -y -qq </dev/null 2>/dev/null || true
     fi
 
     log_step "Обновление списка пакетов..."
     local i
     for i in 1 2 3; do
-        apt-get update -qq 2>/dev/null && break
+        apt_run 300 update -qq 2>/dev/null && break
         [ "$i" -eq 3 ] && error_exit "Не удалось обновить список пакетов"
         rm -rf /var/lib/apt/lists/partial/* 2>/dev/null
         rm -f /var/lib/apt/lists/lock 2>/dev/null
@@ -652,7 +664,7 @@ install_packages() {
     log_info "Список пакетов обновлён"
 
     log_step "Обновление системы..."
-    apt-get upgrade -y -qq \
+    apt_run 1800 upgrade -y -qq \
         -o Dpkg::Options::="--force-confdef" \
         -o Dpkg::Options::="--force-confold" 2>/dev/null
     log_info "Система обновлена"
@@ -664,12 +676,12 @@ install_packages() {
 
     chattr -i /etc/resolv.conf 2>/dev/null || true
     local apt_opts=(-y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold")
-    if ! apt-get install "${apt_opts[@]}" "${PACKAGES_TO_INSTALL[@]}" 2>/dev/null; then
+    if ! apt_run 1800 install "${apt_opts[@]}" "${PACKAGES_TO_INSTALL[@]}" 2>/dev/null; then
         log_warn "Первая попытка не удалась, пробуем восстановиться..."
-        dpkg --configure -a --force-confdef --force-confold 2>/dev/null || true
-        apt-get -f install -y -qq 2>/dev/null || true
+        timeout 300 dpkg --configure -a --force-confdef --force-confold </dev/null 2>/dev/null || true
+        apt_run 600 -f install -y -qq 2>/dev/null || true
         apt-get clean
-        apt-get install "${apt_opts[@]}" "${PACKAGES_TO_INSTALL[@]}" 2>/dev/null
+        apt_run 1800 install "${apt_opts[@]}" "${PACKAGES_TO_INSTALL[@]}" 2>/dev/null
     fi
     chattr +i /etc/resolv.conf 2>/dev/null || true
 
@@ -891,7 +903,7 @@ fetch_sources() {
 
     if ! command -v git >/dev/null 2>&1; then
         log_info "git ещё не установлен — ставлю его первым"
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git >/dev/null 2>&1 || \
+        apt_run 300 install -y -qq git >/dev/null 2>&1 || \
             error_exit "Не удалось поставить git — скачать код панели нечем"
     fi
 
@@ -1072,7 +1084,7 @@ configure_shellinabox() {
     log_step "Налаштування shellinabox (веб-термінал)..."
 
     if ! dpkg -l shellinabox 2>/dev/null | grep -q "^ii"; then
-        apt-get install -y -qq shellinabox 2>/dev/null || {
+        apt_run 300 install -y -qq shellinabox 2>/dev/null || {
             log_warn "shellinabox не встановлено — термінал недоступний"
             return 0
         }
@@ -1354,27 +1366,34 @@ do_remove() {
         ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf 2>/dev/null || true
 
         log_step "Удаление пакетов..."
-        apt-get purge -y -qq apache2 apache2-* libapache2-* php* dnsmasq* iptables-persistent netfilter-persistent resolvconf shellinabox 2>/dev/null || true
-        apt-get autoremove -y -qq 2>/dev/null || true
-        apt-get autoclean -y -qq 2>/dev/null || true
+        apt_run 900 purge -y -qq \
+            apache2 libapache2-mod-php \
+            php php-yaml php-mbstring \
+            dnsmasq iptables-persistent netfilter-persistent \
+            resolvconf shellinabox 2>/dev/null || true
+        apt_run 600 autoremove -y -qq 2>/dev/null || true
+        apt_run 300 autoclean -y -qq 2>/dev/null || true
         rm -rf /etc/apache2 /var/log/apache2
 
+        local fallback_iface
         fallback_iface=$(ip -o link show 2>/dev/null | awk -F': ' '$2 != "lo" {print $2; exit}')
-    if [ -z "$(ls -A /etc/netplan/ 2>/dev/null)" ]; then
-            cat > /etc/netplan/00-default.yaml << 'NETPLAN_EOF'
+        [ -z "$fallback_iface" ] && fallback_iface="eth0"
+        if [ -z "$(ls -A /etc/netplan/ 2>/dev/null)" ]; then
+            cat > /etc/netplan/00-default.yaml << NETPLAN_EOF
 network:
   version: 2
   renderer: networkd
   ethernets:
-    ${fallback_iface:-eth0}:
+    $fallback_iface:
       dhcp4: true
 NETPLAN_EOF
-            log_warn "Создан базовый netplan"
+            chmod 600 /etc/netplan/00-default.yaml
+            log_warn "Создан базовый netplan для $fallback_iface"
         fi
         netplan apply 2>/dev/null || true
     fi
 
-    timeout 30 dpkg --configure -a >/dev/null 2>&1 || true
+    timeout 120 dpkg --configure -a </dev/null >/dev/null 2>&1 || true
     systemctl daemon-reload
 
     if [ "$mode" = "full" ]; then
