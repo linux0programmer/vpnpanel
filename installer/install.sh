@@ -457,6 +457,50 @@ ssh_session_iface() {
     ip -o -4 addr show 2>/dev/null | awk -v want="$server_ip" '$4 ~ "^"want"/" {print $2; exit}'
 }
 
+write_netplan_static() {
+    cat > "$NETPLAN_FILE" << EOF
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    $INPUT_INTERFACE:
+      dhcp4: false
+      addresses: [$sip/$mask]
+      routes:
+        - to: default
+          via: $gw
+      nameservers:
+        addresses: [$d1, $d2]
+    $OUTPUT_INTERFACE:
+      dhcp4: false
+      addresses: [$LOCAL_IP/$LOCAL_PREFIX]
+      nameservers:
+        addresses: [$LOCAL_IP]
+      optional: true
+EOF
+    netplan_extra_wans >> "$NETPLAN_FILE"
+}
+
+wan_freeze_current() {
+    local cidr dns
+    cidr=$(ip -4 -o addr show "$INPUT_INTERFACE" scope global 2>/dev/null | awk '{print $4}' | head -1)
+    [ -z "$cidr" ] && return 1
+    sip=${cidr%/*}
+    mask=${cidr#*/}
+    valid_ipv4 "$sip" || return 1
+    [ "$mask" -ge 1 ] 2>/dev/null && [ "$mask" -le 32 ] 2>/dev/null || return 1
+
+    gw=$(ip route show default 2>/dev/null | awk -v i="$INPUT_INTERFACE" '$0 ~ ("dev " i) {for (k = 1; k <= NF; k++) if ($k == "via") print $(k + 1)}' | head -1)
+    valid_ipv4 "$gw" || return 1
+
+    dns=$(resolvectl dns "$INPUT_INTERFACE" 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}')
+    d1=$(printf '%s\n' "$dns" | sed -n 1p)
+    d2=$(printf '%s\n' "$dns" | sed -n 2p)
+    valid_ipv4 "$d1" || d1="1.1.1.1"
+    valid_ipv4 "$d2" || d2="8.8.8.8"
+    return 0
+}
+
 configure_network() {
     log_step "Настройка сети..."
 
@@ -467,7 +511,7 @@ configure_network() {
             echo -e "${YELLOW}[!] Вы подключены по SSH через $INPUT_INTERFACE — это и есть WAN,${NC}"
             echo -e "${YELLOW}    который сейчас будет перенастроен. Сессия оборвётся.${NC}"
             echo ""
-            echo -e "${WHITE}    Вариант 3 не трогает WAN — соединение переживёт установку.${NC}"
+            echo -e "${WHITE}    Варианты 3 и 4 сохраняют текущий адрес — соединение переживёт установку.${NC}"
             echo -e "${WHITE}    Для вариантов 1 и 2 установщик продолжит работу и без сессии:${NC}"
             echo -e "${WHITE}    вопросов дальше не будет, ход установки — в ${CYAN}$LOG_FILE${NC}"
             echo -e "${WHITE}    После переподключения: ${CYAN}tail -f $LOG_FILE${NC}"
@@ -478,14 +522,15 @@ configure_network() {
     {
         echo ""
         echo "  1) DHCP на WAN"
-        echo "  2) Статический IP на WAN"
-        echo "  3) Не менять WAN — оставить текущие настройки"
+        echo "  2) Статический IP на WAN — ввести вручную"
+        echo "  3) Не менять WAN — оставить текущие настройки как есть"
+        echo -e "  4) Закрепить текущий адрес статикой ${WHITE}(адрес перестанет меняться)${NC}"
         echo ""
     } >&3
 
     while true; do
-        ask_var "Выбор [1/2/3]: " choice
-        case "$choice" in 1|2|3) break ;; esac
+        ask_var "Выбор [1/2/3/4]: " choice
+        case "$choice" in 1|2|3|4) break ;; esac
     done
 
     backup_netplan
@@ -540,6 +585,21 @@ network:
       optional: true
 EOF
         netplan_extra_wans >> "$NETPLAN_FILE"
+    elif [ "$choice" == "4" ]; then
+        log_info "Режим: закрепление текущего адреса"
+        if ! wan_freeze_current; then
+            {
+                echo ""
+                echo -e "${YELLOW}[!] Не удалось снять текущие настройки $INPUT_INTERFACE.${NC}"
+                echo -e "${YELLOW}    Нужны адрес, маска и шлюз по умолчанию через этот интерфейс.${NC}"
+                echo ""
+            } >&3
+            error_exit "Закрепить нечего — выберите вариант 1 или 2"
+        fi
+        log_info "Закрепляю: $sip/$mask, шлюз $gw, DNS $d1 $d2"
+        log_warn "Адрес выдан по DHCP — сделайте резервацию на DHCP-сервере,"
+        log_warn "иначе он может достаться другому устройству"
+        write_netplan_static
     else
         log_info "Режим: Статический IP"
         while true; do
@@ -568,27 +628,7 @@ EOF
             echo -e "${YELLOW}Нужен адрес вида 8.8.8.8${NC}" >&3
         done
 
-        cat > "$NETPLAN_FILE" << EOF
-network:
-  version: 2
-  renderer: networkd
-  ethernets:
-    $INPUT_INTERFACE:
-      dhcp4: false
-      addresses: [$sip/$mask]
-      routes:
-        - to: default
-          via: $gw
-      nameservers:
-        addresses: [$d1, $d2]
-    $OUTPUT_INTERFACE:
-      dhcp4: false
-      addresses: [$LOCAL_IP/$LOCAL_PREFIX]
-      nameservers:
-        addresses: [$LOCAL_IP]
-      optional: true
-EOF
-        netplan_extra_wans >> "$NETPLAN_FILE"
+        write_netplan_static
     fi
 
     chmod 600 "$NETPLAN_FILE"
