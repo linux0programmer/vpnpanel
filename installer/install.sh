@@ -689,13 +689,40 @@ drop_stale_apache_config() {
     rm -rf /etc/apache2
 }
 
+apache_conffiles_present() {
+    [ -f /etc/apache2/mods-available/mpm_event.load ]
+}
+
 restore_apache_conffiles() {
     log_warn "Конфигурация apache2 отсутствует — возвращаю её из пакета"
     apt_run 300 update -qq || true
+
     timeout 900 apt-get install -y --reinstall \
         -o Dpkg::Options::="--force-confmiss" \
         -o Dpkg::Options::="--force-confdef" \
         -o Dpkg::Options::="--force-confold" apache2 </dev/null || true
+
+    apache_conffiles_present && { log_info "Конфигурация apache2 восстановлена"; return 0; }
+
+    log_warn "apt не переустанавливает полунастроенный пакет — забираю deb напрямую"
+    local tmpdir deb
+    tmpdir=$(mktemp -d /var/tmp/vpn-panel-apache.XXXXXX) || return 1
+    chmod 755 "$tmpdir"
+
+    if ( cd "$tmpdir" && timeout 300 apt-get download apache2 </dev/null ); then
+        deb=$(find "$tmpdir" -maxdepth 1 -name 'apache2_*.deb' | head -1)
+        if [ -n "$deb" ]; then
+            log_info "Распаковываю $(basename "$deb")"
+            timeout 300 dpkg -i --force-confmiss "$deb" </dev/null || true
+        else
+            log_warn "deb скачался, но файла нет — пропускаю"
+        fi
+    else
+        log_warn "Не удалось скачать deb apache2"
+    fi
+    rm -rf "$tmpdir"
+
+    apache_conffiles_present
 }
 
 repair_apache_mpm() {
@@ -709,9 +736,9 @@ repair_apache_mpm() {
     rm -f /etc/apache2/mods-enabled/php*.load /etc/apache2/mods-enabled/php*.conf
     rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf
 
-    [ -f /etc/apache2/mods-available/mpm_event.load ] || restore_apache_conffiles
+    apache_conffiles_present || restore_apache_conffiles
 
-    if [ -f /etc/apache2/mods-available/mpm_event.load ]; then
+    if apache_conffiles_present; then
         a2enmod mpm_event >/dev/null 2>&1 || true
     else
         log_warn "mods-available/mpm_event.load так и не появился"
