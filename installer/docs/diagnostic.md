@@ -73,15 +73,15 @@ curl -O https://raw.githubusercontent.com/linux0programmer/vpnpanel/main/install
 ### Вариант 1: SCP с локальной машины
 
 ```bash
-scp diagnostic.sh root@10.10.1.1:/tmp/
-ssh root@10.10.1.1 "sed -i 's/\r$//' /tmp/diagnostic.sh && bash /tmp/diagnostic.sh"
+scp diagnostic.sh root@10.32.0.1:/tmp/
+ssh root@10.32.0.1 "sed -i 's/\r$//' /tmp/diagnostic.sh && bash /tmp/diagnostic.sh"
 ```
 
 `sed -i 's/\r$//'` убирает Windows CRLF — без этого bash может выдать странные ошибки.
 
 ### Вариант 2: Через шелл из веб-панели
 
-1. Открыть `http://10.10.1.1/cabinet.php?menu=console` (или `/shell/`)
+1. Открыть `http://10.32.0.1/cabinet.php?menu=console` (или `/shell/`)
 2. Перетащить файл `diagnostic.sh` через буфер обмена в окно терминала или `wget` его
 
 ```bash
@@ -140,12 +140,12 @@ sed 's/\r$//' /tmp/diagnostic.sh | sudo bash
 
 | Проверка | Что значит |
 |---|---|
-| **LAN интерфейс** | Ищется по IP `10.10.1.1` (фиксированный для LAN-стороны VPN Panel). Должен быть в state UP. |
+| **LAN интерфейс** | Ищется по IP `10.32.0.1` (фиксированный для LAN-стороны VPN Panel). Должен быть в state UP. |
 | **WAN интерфейс** | Ищется через `ip route show default` (через какой интерфейс уходит трафик в интернет). Исключаются tun*/wg* — нужен физический. |
 | **VPN tun0** | VPN-туннель. Если конфиг не загружен — `[i]` (норма для свежей установки). |
 | **Default route** | Через какой интерфейс идёт исходящий трафик. Через tun0 = full tunnel, через WAN = split tunnel или VPN не активен. |
 
-**Если LAN интерфейс не найден** — значит netplan не сконфигурировал интерфейс с адресом шлюза LAN. Адрес берётся из `LAN_IP` в `/etc/vpn-panel.conf` (по умолчанию `10.10.1.1`); проверьте `/etc/netplan/99-vpn-panel.yaml` — там должна быть секция с `addresses: [<LAN_IP>/<LAN_PREFIX>]`.
+**Если LAN интерфейс не найден** — значит netplan не сконфигурировал интерфейс с адресом шлюза LAN. Адрес берётся из `LAN_IP` в `/etc/vpn-panel.conf` (по умолчанию `10.32.0.1`); проверьте `/etc/netplan/99-vpn-panel.yaml` — там должна быть секция с `addresses: [<LAN_IP>/<LAN_PREFIX>]`.
 
 **Если WAN не найден** — нет default route, значит сервер не имеет выхода в интернет. Проверьте подключение кабеля и DHCP/static настройки.
 
@@ -165,7 +165,7 @@ LAN=ens34
 |---|---|
 | **Версия в файле** | Должна быть 5 |
 | **WAN= соответствует системе** | Имя WAN-интерфейса в файле должно совпадать с реальным `default route dev` |
-| **LAN= соответствует системе** | Имя LAN-интерфейса в файле должно совпадать с реальным интерфейсом, у которого IP `10.10.1.1` |
+| **LAN= соответствует системе** | Имя LAN-интерфейса в файле должно совпадать с реальным интерфейсом, у которого IP `10.32.0.1` |
 
 **Зачем это важно:** скрипты HC daemon и iptables-правила берут имена интерфейсов из этого файла. Если там написано `WAN=eth0`, а реально интерфейс называется `ens33` — Kill Switch правила не сработают, HC daemon будет в loop'е.
 
@@ -271,7 +271,7 @@ sudo journalctl -u vpn-healthcheck --since "10 min ago"
 | **update.sh** | Скрипт миграций (запускается через cron) |
 | **vpn-healthcheck.sh** | HC daemon скрипт |
 | **api/ pages/ includes/ assets/** | структура директорий панели |
-| **HTTP http://10.10.1.1/** | Должна вернуть 200 (страница) или 302 (редирект на login) |
+| **HTTP http://10.32.0.1/** | Должна вернуть 200 (страница) или 302 (редирект на login) |
 
 **Если HTTP не отвечает** — apache2 не запущен, или iptables блокирует порт 80, или PHP сломан. Проверьте `sudo systemctl status apache2` и `sudo tail -50 /var/log/apache2/error.log`.
 

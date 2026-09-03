@@ -11,7 +11,7 @@
 curl -fsSL https://raw.githubusercontent.com/linux0programmer/vpnpanel/main/installer/install.sh -o install.sh && sudo bash install.sh
 ```
 
-15 минут — и у вас VPN-роутер с веб-панелью на `http://10.10.1.1/`.
+15 минут — и у вас VPN-роутер с веб-панелью на `http://10.32.0.1/`.
 
 Скачивается один файл — остальное установщик забирает сам на четвёртом шаге, до изменения сетевых настроек. Если нужен весь репозиторий (например, чтобы держать рядом `diagnostic.sh`):
 
@@ -273,12 +273,12 @@ git clone https://github.com/linux0programmer/vpnpanel.git && sudo bash vpnpanel
 После установки:
 
 ```
-http://10.10.1.1/
+http://10.32.0.1/
 ```
 
 Логин — пароль root от вашего сервера.
 
-> 📌 IP `10.10.1.1` — это адрес LAN-интерфейса, hardcoded в установщике. Подключайтесь с устройства, физически воткнутого в LAN-порт сервера, либо через WiFi-точку, подключённую к LAN-интерфейсу.
+> 📌 IP `10.32.0.1` — это адрес LAN-интерфейса, hardcoded в установщике. Подключайтесь с устройства, физически воткнутого в LAN-порт сервера, либо через WiFi-точку, подключённую к LAN-интерфейсу.
 
 ### 4. Загрузка VPN-конфига
 
@@ -348,7 +348,7 @@ http://10.10.1.1/
 │  └──────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │   netplan → networkd                                 │   │
-│  │   WAN (DHCP/Static)  +  LAN 10.10.1.1/20             │   │
+│  │   WAN (DHCP/Static)  +  LAN 10.32.0.1/20             │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -609,7 +609,7 @@ sudo systemctl status dnsmasq
 cat /var/lib/misc/dnsmasq.leases
 
 # Проверка DNS
-dig @10.10.1.1 google.com
+dig @10.32.0.1 google.com
 
 # Логи dnsmasq
 sudo journalctl -u dnsmasq --since "1 hour ago"
@@ -624,7 +624,7 @@ sudo journalctl -u dnsmasq --since "1 hour ago"
 cat /proc/net/xt_recent/SSH
 
 # Сбросить бан конкретного IP
-echo '/10.10.1.5' | sudo tee /proc/net/xt_recent/SSH
+echo '/10.32.0.5' | sudo tee /proc/net/xt_recent/SSH
 
 # Текущие правила INPUT
 sudo iptables -L INPUT -n -v --line-numbers | head -20

@@ -8,8 +8,8 @@ EVENTS="/var/log/vpn-panel/events.log"
 VP_CONF="/etc/vpn-panel.conf"
 
 VP_CONF_FILE="/etc/vpn-panel.conf"
-LAN_IP="10.10.1.1"
-LAN_NET="10.10.1.0/20"
+LAN_IP="10.32.0.1"
+LAN_NET="10.32.0.0/20"
 LAN_PREFIX="20"
 
 load_lan_params() {

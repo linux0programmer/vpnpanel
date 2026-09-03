@@ -245,8 +245,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_settings'])) {
                 if (!isset($data['network']['ethernets'][$outputInterface])) {
                     $data['network']['ethernets'][$outputInterface] = [
                         'dhcp4'       => false,
-                        'addresses'   => [vp_panelConf('LAN_IP', '10.10.1.1') . '/' . vp_panelConf('LAN_PREFIX', '20')],
-                        'nameservers' => ['addresses' => [vp_panelConf('LAN_IP', '10.10.1.1')]],
+                        'addresses'   => [vp_panelConf('LAN_IP', '10.32.0.1') . '/' . vp_panelConf('LAN_PREFIX', '20')],
+                        'nameservers' => ['addresses' => [vp_panelConf('LAN_IP', '10.32.0.1')]],
                         'optional'    => true,
                     ];
                 }
@@ -650,7 +650,7 @@ $wanState = [
         <div class="net-form-fields">
             <div class="net-row">
                 <span class="net-row-label">IP-адрес шлюза</span>
-                <span class="net-readonly-value"><?php echo htmlspecialchars($outputAddress ?: vp_panelConf('LAN_IP', '10.10.1.1')); ?></span>
+                <span class="net-readonly-value"><?php echo htmlspecialchars($outputAddress ?: vp_panelConf('LAN_IP', '10.32.0.1')); ?></span>
             </div>
             <div class="net-row">
                 <span class="net-row-label">Маска подсети</span>
@@ -658,7 +658,7 @@ $wanState = [
             </div>
             <div class="net-row">
                 <span class="net-row-label">Диапазон DHCP</span>
-                <span class="net-readonly-value"><?php echo htmlspecialchars(vp_panelConf('DHCP_FROM', '10.10.1.2')); ?> — <?php echo htmlspecialchars(vp_panelConf('DHCP_TO', '10.10.15.254')); ?></span>
+                <span class="net-readonly-value"><?php echo htmlspecialchars(vp_panelConf('DHCP_FROM', '10.32.0.2')); ?> — <?php echo htmlspecialchars(vp_panelConf('DHCP_TO', '10.32.15.254')); ?></span>
             </div>
         </div>
     </div>

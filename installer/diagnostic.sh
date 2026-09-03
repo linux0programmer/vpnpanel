@@ -22,8 +22,8 @@ QUIET=0
 WEB_DIR_DIAG="/var/www/html"
 
 VP_CONF_FILE="/etc/vpn-panel.conf"
-LAN_IP="10.10.1.1"
-LAN_NET="10.10.1.0/20"
+LAN_IP="10.32.0.1"
+LAN_NET="10.32.0.0/20"
 if [ -f "$VP_CONF_FILE" ]; then
     v=$(grep "^LAN_IP=" "$VP_CONF_FILE" 2>/dev/null | cut -d= -f2);  [ -n "$v" ] && LAN_IP="$v"
     v=$(grep "^LAN_NET=" "$VP_CONF_FILE" 2>/dev/null | cut -d= -f2); [ -n "$v" ] && LAN_NET="$v"

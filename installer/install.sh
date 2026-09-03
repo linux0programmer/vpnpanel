@@ -9,12 +9,12 @@ GIT_REPO="https://github.com/linux0programmer/vpnpanel.git"
 NETPLAN_FILE="/etc/netplan/99-vpn-panel.yaml"
 NETPLAN_LEGACY="/etc/netplan/01-network-manager-all.yaml"
 
-LOCAL_NET="10.10.1.0/20"
-LOCAL_IP="10.10.1.1"
+LOCAL_NET="10.32.0.0/20"
+LOCAL_IP="10.32.0.1"
 LOCAL_PREFIX="20"
 LOCAL_MASK="255.255.240.0"
-DHCP_RANGE_START="10.10.1.2"
-DHCP_RANGE_END="10.10.15.254"
+DHCP_RANGE_START="10.32.0.2"
+DHCP_RANGE_END="10.32.15.254"
 
 PACKAGES_REQUIRED=(
     "curl" "wget" "dnsmasq" "wireguard" "openvpn"

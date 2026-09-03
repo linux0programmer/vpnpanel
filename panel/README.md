@@ -786,7 +786,7 @@ curl -O https://raw.githubusercontent.com/linux0programmer/vpnpanel/main/install
 
 ### Чеклист сценариев для ручного тестирования
 
-- [ ] Установка с нуля → панель открывается на `http://10.10.1.1/`
+- [ ] Установка с нуля → панель открывается на `http://10.32.0.1/`
 - [ ] Загрузка WG конфига → activate → tun0 поднимается → ping проходит
 - [ ] Загрузка OVPN конфига → activate → tun0 поднимается через openvpn
 - [ ] Failover: убить primary → автопереключение на backup в ≤15 сек
