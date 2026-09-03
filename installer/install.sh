@@ -158,7 +158,7 @@ pkg_available() {
 check_packages() {
     log_step "Проверка доступности пакетов в репозиториях..."
 
-    apt_run 300 update -qq 2>/dev/null || log_warn "apt-get update не отработал — проверка может быть неточной"
+    apt_run 300 update -qq || log_warn "apt-get update не отработал — проверка может быть неточной"
 
     local pkg missing_required=() missing_optional=()
     for pkg in "${PACKAGES_REQUIRED[@]}"; do
@@ -689,15 +689,21 @@ install_packages() {
     [ "$waited" -gt 0 ] && log_info "APT освободился (ждали ${waited}с)" || log_info "APT свободен"
 
     if [ -n "$(ls -A /var/lib/dpkg/updates 2>/dev/null)" ] || [ -n "$(dpkg --audit 2>&1)" ]; then
-        log_warn "Восстановление dpkg..."
-        timeout 120 dpkg --configure -a --force-confdef --force-confold </dev/null 2>/dev/null || true
-        timeout 120 apt-get -f install -y -qq </dev/null 2>/dev/null || true
+        log_warn "Пакетная база в неконсистентном состоянии — чиню"
+        log_warn "dpkg --audit: $(dpkg --audit 2>&1 | head -3 | tr '\n' ' ')"
+        timeout 300 dpkg --configure -a --force-confdef --force-confold </dev/null || true
+        timeout 300 apt-get -f install -y </dev/null || true
+        if [ -n "$(dpkg --audit 2>&1)" ]; then
+            log_warn "После ремонта dpkg всё ещё жалуется — установка может не пройти"
+        else
+            log_info "Пакетная база приведена в порядок"
+        fi
     fi
 
     log_step "Обновление списка пакетов..."
     local i
     for i in 1 2 3; do
-        apt_run 300 update -qq 2>/dev/null && break
+        apt_run 300 update -qq && break
         [ "$i" -eq 3 ] && error_exit "Не удалось обновить список пакетов"
         rm -rf /var/lib/apt/lists/partial/* 2>/dev/null
         rm -f /var/lib/apt/lists/lock 2>/dev/null
@@ -708,7 +714,7 @@ install_packages() {
     log_step "Обновление системы..."
     apt_run 1800 upgrade -y -qq \
         -o Dpkg::Options::="--force-confdef" \
-        -o Dpkg::Options::="--force-confold" 2>/dev/null
+        -o Dpkg::Options::="--force-confold"
     log_info "Система обновлена"
 
     log_step "Установка ${#PACKAGES_TO_INSTALL[@]} пакетов..."
@@ -718,12 +724,12 @@ install_packages() {
 
     chattr -i /etc/resolv.conf 2>/dev/null || true
     local apt_opts=(-y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold")
-    if ! apt_run 1800 install "${apt_opts[@]}" "${PACKAGES_TO_INSTALL[@]}" 2>/dev/null; then
+    if ! apt_run 1800 install "${apt_opts[@]}" "${PACKAGES_TO_INSTALL[@]}"; then
         log_warn "Первая попытка не удалась, пробуем восстановиться..."
-        timeout 300 dpkg --configure -a --force-confdef --force-confold </dev/null 2>/dev/null || true
-        apt_run 600 -f install -y -qq 2>/dev/null || true
+        timeout 300 dpkg --configure -a --force-confdef --force-confold </dev/null || true
+        apt_run 600 -f install -y || true
         apt-get clean
-        apt_run 1800 install "${apt_opts[@]}" "${PACKAGES_TO_INSTALL[@]}" 2>/dev/null
+        apt_run 1800 install "${apt_opts[@]}" "${PACKAGES_TO_INSTALL[@]}" || true
     fi
     chattr +i /etc/resolv.conf 2>/dev/null || true
 
@@ -731,7 +737,25 @@ install_packages() {
     for pkg in "${PACKAGES_TO_INSTALL[@]}"; do
         dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed" || missing+=("$pkg")
     done
-    [ ${#missing[@]} -gt 0 ] && error_exit "Не установлены: ${missing[*]}"
+
+    if [ ${#missing[@]} -gt 0 ]; then
+        local why
+        why=$(timeout 300 apt-get install -y "${missing[@]}" </dev/null 2>&1 | grep -vE '^(Reading|Building|Selecting|Preparing|Unpacking|Setting up|Processing) ' | tail -20)
+        {
+            echo ""
+            echo -e "${RED}[✗] Не удалось поставить: ${missing[*]}${NC}"
+            echo ""
+            echo -e "${WHITE}Что ответил apt:${NC}"
+            printf '%s\n' "$why" | sed 's/^/    /'
+            echo ""
+            echo -e "${WHITE}Дальше вручную:${NC}"
+            echo -e "    ${CYAN}dpkg --configure -a${NC}"
+            echo -e "    ${CYAN}apt-get -f install -y${NC}"
+            echo -e "    ${CYAN}apt-get install -y ${missing[*]}${NC}"
+            echo ""
+        } >&3
+        error_exit "Не установлены: ${missing[*]}"
+    fi
     log_info "Все ${#PACKAGES_TO_INSTALL[@]} пакетов установлены"
 }
 
@@ -1126,7 +1150,7 @@ configure_shellinabox() {
     log_step "Налаштування shellinabox (веб-термінал)..."
 
     if ! dpkg -l shellinabox 2>/dev/null | grep -q "^ii"; then
-        apt_run 300 install -y -qq shellinabox 2>/dev/null || {
+        apt_run 300 install -y -qq shellinabox || {
             log_warn "shellinabox не встановлено — термінал недоступний"
             return 0
         }
