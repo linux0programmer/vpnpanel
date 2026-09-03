@@ -762,13 +762,18 @@ repair_apache_mpm() {
 
     if ! apache_conffiles_present || ! php_module_conffiles_present; then
         restore_apache_conffiles || true
-        rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf
     fi
 
     if ! apache_conffiles_present; then
         log_warn "mods-available/mpm_event.load так и не появился"
     fi
 
+    if apache_installed; then
+        log_info "apache2 настроился при восстановлении conffiles"
+        return 0
+    fi
+
+    rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf
     timeout 300 dpkg --configure -a </dev/null || true
 
     if apache_installed; then
