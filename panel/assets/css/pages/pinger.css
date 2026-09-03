@@ -1,0 +1,103 @@
+.pinger-controls {
+    display: grid;
+    grid-template-columns: 1fr 200px auto;
+    gap: var(--space-3);
+}
+
+@media (max-width: 768px) {
+    .pinger-controls { grid-template-columns: 1fr; }
+}
+
+.pinger-buttons {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.pinger-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--space-3);
+}
+
+.pinger-stat {
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+
+.pinger-stat-label {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.pinger-stat-value {
+    font-size: var(--text-xl);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.pinger-stat-value--good { color: var(--emerald); }
+.pinger-stat-value--bad { color: var(--rose); }
+.pinger-stat-value--warn { color: var(--amber); }
+.pinger-stat-value--info { color: var(--cyan); }
+
+.pinger-stat-unit {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    margin-left: var(--space-1);
+}
+
+#pingLog {
+    height: 380px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    overflow-y: auto;
+}
+
+#pingLog p { margin: 0; padding: 2px 0; }
+#pingLog p.log-ok { color: var(--emerald); }
+#pingLog p.log-slow { color: var(--amber); }
+#pingLog p.log-fail { color: var(--rose); }
+
+.pinger-page-header {
+    margin-bottom: var(--space-6);
+}
+
+.pinger-page-header h1 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.pinger-page-header h1 svg {
+    width: 26px;
+    height: 26px;
+    color: var(--cyan);
+}
+
+.pinger-page-header p {
+    margin-top: var(--space-2);
+}
+
+.pinger-layout {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.pinger-log-card {
+    padding: var(--space-3);
+}
+</content>

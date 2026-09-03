@@ -1,0 +1,97 @@
+.console-card {
+    background: var(--surface-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 160px);
+    min-height: 420px;
+}
+
+.console-bar {
+    background: var(--bg-base);
+    padding: var(--space-2) var(--space-4);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.console-bar-actions {
+    margin-left: auto;
+    display: flex;
+    gap: var(--space-2);
+}
+
+.traffic-lights {
+    display: flex;
+    gap: var(--space-1);
+    margin-right: var(--space-2);
+}
+
+.traffic-light {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.traffic-light--r { background: var(--rose); }
+.traffic-light--y { background: var(--amber); }
+.traffic-light--g { background: var(--emerald); }
+
+.console-title {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.console-frame-wrap {
+    flex: 1;
+    display: flex;
+    background: #0C0C0C;
+
+    padding: 0;
+}
+
+.console-frame {
+    flex: 1;
+    width: 100%;
+    border: 0;
+    background: #0C0C0C;
+}
+
+.console-diag {
+    padding: var(--space-8) var(--space-6);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+    overflow-y: auto;
+    flex: 1;
+}
+
+.console-diag .cmd {
+    display: block;
+    background: var(--bg-deep);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-3);
+    color: var(--cyan);
+    margin: var(--space-1) 0 var(--space-3);
+    word-break: break-all;
+}
+
+.console-diag .warn {
+    display: block;
+    color: var(--rose);
+    font-size: var(--text-md);
+    font-weight: 700;
+    margin-bottom: var(--space-4);
+}
+</content>
+
+.console-card {
+    background: var(--tint-purple), var(--surface-1);
+}

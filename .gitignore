@@ -1,0 +1,12 @@
+graphify-out/
+design-preview.html
+
+*.disabled-by-vpn-panel
+*.original.backup
+*.orig
+*.rej
+
+.DS_Store
+Thumbs.db
+*.swp
+*~
