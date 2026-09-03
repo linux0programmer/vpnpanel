@@ -157,6 +157,20 @@
     margin-top: var(--space-3);
 }
 
+.net-note {
+    background: var(--tint-amber), var(--surface-2);
+    border: 1px solid var(--amber-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+    color: var(--amber-text);
+    font-size: var(--text-sm);
+    line-height: 1.55;
+}
+
+.net-note .mono {
+    color: var(--text-primary);
+}
+
 .net-form {
     display: flex;
     flex-direction: column;

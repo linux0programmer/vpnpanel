@@ -23,7 +23,7 @@ PACKAGES_REQUIRED=(
 )
 
 PACKAGES_OPTIONAL=(
-    "htop" "net-tools" "mtr" "resolvconf" "shellinabox"
+    "htop" "net-tools" "mtr" "resolvconf" "shellinabox" "python3-yaml"
 )
 
 PACKAGES_TO_INSTALL=("${PACKAGES_REQUIRED[@]}" "${PACKAGES_OPTIONAL[@]}")

@@ -1,6 +1,7 @@
 #!/bin/bash
 
 CONF="/etc/vpn-panel.conf"
+NETPLAN_FILE="/etc/netplan/99-vpn-panel.yaml"
 TABLE_BASE=100
 RULE_PRIO_BASE=1000
 PING_HOSTS=("8.8.8.8" "1.1.1.1" "9.9.9.9")
@@ -207,6 +208,60 @@ set_active() {
 
 lan_iface() { conf_get LAN; }
 
+netplan_edit() {
+    local action="$1" iface="$2" metric="${3:-100}"
+    [ -f "$NETPLAN_FILE" ] || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+
+    python3 - "$NETPLAN_FILE" "$action" "$iface" "$metric" <<'PYEOF'
+import sys
+
+try:
+    import yaml
+except ImportError:
+    sys.exit(2)
+
+path, action, iface, metric = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+
+try:
+    with open(path) as fh:
+        data = yaml.safe_load(fh) or {}
+except Exception:
+    sys.exit(3)
+
+net = data.setdefault("network", {})
+net.setdefault("version", 2)
+eth = net.setdefault("ethernets", {})
+
+if action == "add":
+    if iface in eth:
+        sys.exit(0)
+    eth[iface] = {
+        "dhcp4": True,
+        "dhcp-identifier": "mac",
+        "dhcp4-overrides": {"use-dns": False, "route-metric": metric},
+        "optional": True,
+    }
+elif action == "remove":
+    if iface not in eth:
+        sys.exit(0)
+    del eth[iface]
+else:
+    sys.exit(4)
+
+try:
+    with open(path, "w") as fh:
+        yaml.safe_dump(data, fh, default_flow_style=False, sort_keys=False)
+except Exception:
+    sys.exit(5)
+PYEOF
+}
+
+netplan_reload() {
+    chmod 600 "$NETPLAN_FILE" 2>/dev/null || true
+    netplan apply 2>/dev/null
+}
+
 add_wan() {
     local iface="$1" list
     [ -z "$iface" ] && return 1
@@ -224,8 +279,32 @@ add_wan() {
         return 1
     fi
     conf_set WAN_LIST "${list:+$list }$iface"
+
+    local note=""
+    if ip -4 addr show "$iface" 2>/dev/null | grep -q "inet "; then
+        note="адрес уже есть"
+    elif netplan_edit add "$iface" "$((100 + $(iface_index "$iface") * 100))"; then
+        if netplan_reload; then
+            local waited=0
+            while [ "$waited" -lt 15 ]; do
+                ip -4 addr show "$iface" 2>/dev/null | grep -q "inet " && break
+                sleep 1
+                waited=$((waited + 1))
+            done
+            if ip -4 addr show "$iface" 2>/dev/null | grep -q "inet "; then
+                note="получен адрес по DHCP"
+            else
+                note="DHCP пока не ответил, интерфейс описан в netplan"
+            fi
+        else
+            note="netplan apply не отработал"
+        fi
+    else
+        note="не удалось описать интерфейс в netplan — задайте адрес вручную"
+    fi
+
     apply_rules
-    printf 'добавлен канал %s (приоритет %s)\n' "$iface" "$(iface_index "$iface")"
+    printf 'добавлен канал %s (приоритет %s): %s\n' "$iface" "$(iface_index "$iface")" "$note"
 }
 
 remove_wan() {
@@ -257,6 +336,11 @@ remove_wan() {
 
     drop_rules
     conf_set WAN_LIST "$out"
+
+    if netplan_edit remove "$iface"; then
+        netplan_reload || printf 'netplan apply после удаления канала не отработал\n' >&2
+    fi
+
     apply_rules
     printf 'канал %s удалён, осталось: %s\n' "$iface" "$out"
 }

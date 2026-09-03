@@ -8,7 +8,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     exit();
 }
 
-$netsettingsAssetsVer = '5.5.4';
+$netsettingsAssetsVer = '5.6.0';
 
 $netplanDir   = '/etc/netplan/';
 $yamlFilePath = null;
@@ -42,6 +42,40 @@ if (!$yamlFilePath || !file_exists($yamlFilePath)) {
 function readYamlFile(string $filePath): ?array {
     if (!file_exists($filePath)) return null;
     return yaml_parse_file($filePath) ?: null;
+}
+
+function netplanFiles(string $dir): array {
+    $files = array_merge(glob($dir . '*.yaml') ?: [], glob($dir . '*.yml') ?: []);
+    sort($files);
+    return $files;
+}
+
+function readAllNetplanEthernets(string $dir): array {
+    $merged = [];
+    foreach (netplanFiles($dir) as $file) {
+        $parsed = @yaml_parse_file($file);
+        if (!is_array($parsed) || empty($parsed['network']['ethernets'])) continue;
+        foreach ($parsed['network']['ethernets'] as $iface => $config) {
+            if (!is_array($config)) $config = [];
+            $merged[$iface] = array_merge($merged[$iface] ?? [], $config);
+        }
+    }
+    return $merged;
+}
+
+function netplanFileFor(string $dir, string $iface): string {
+    $found = '';
+    foreach (netplanFiles($dir) as $file) {
+        $parsed = @yaml_parse_file($file);
+        if (is_array($parsed) && isset($parsed['network']['ethernets'][$iface])) {
+            $found = $file;
+        }
+    }
+    return $found;
+}
+
+function ifaceExists(string $iface): bool {
+    return $iface !== '' && is_dir('/sys/class/net/' . preg_replace('/[^a-z0-9_.-]/i', '', $iface));
 }
 
 function writeYamlFile(string $filePath, array $data): bool {
@@ -271,6 +305,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_settings'])) {
 }
 
 $data = readYamlFile($yamlFilePath);
+$allEthernets = readAllNetplanEthernets($netplanDir);
+
 $inputInterface  = '';
 $outputInterface = '';
 $inputConfig     = [];
@@ -279,30 +315,29 @@ $outputConfig    = [];
 $confWan = vp_panelConf('WAN', '');
 $confLan = vp_panelConf('LAN', '');
 
-if ($data && isset($data['network']['ethernets'])) {
-    foreach ($data['network']['ethernets'] as $iface => $config) {
-        if ($confLan !== '' && $iface === $confLan) {
-            $outputInterface = $iface;
-            $outputConfig    = $config;
-        } elseif ($confWan !== '' && $iface === $confWan) {
+if ($confWan !== '' && ifaceExists($confWan)) {
+    $inputInterface = $confWan;
+    $inputConfig    = $allEthernets[$confWan] ?? [];
+}
+if ($confLan !== '' && ifaceExists($confLan)) {
+    $outputInterface = $confLan;
+    $outputConfig    = $allEthernets[$confLan] ?? [];
+}
+
+if (empty($inputInterface) || empty($outputInterface)) {
+    foreach ($allEthernets as $iface => $config) {
+        if ($iface === $inputInterface || $iface === $outputInterface) continue;
+        if (!empty($config['optional']) && $config['optional'] === true) {
+            if (empty($outputInterface)) { $outputInterface = $iface; $outputConfig = $config; }
+        } elseif (empty($inputInterface)) {
             $inputInterface = $iface;
             $inputConfig    = $config;
         }
     }
-
-    if (empty($outputInterface) || empty($inputInterface)) {
-        foreach ($data['network']['ethernets'] as $iface => $config) {
-            if (!empty($config['optional']) && $config['optional'] === true) {
-                if (empty($outputInterface)) { $outputInterface = $iface; $outputConfig = $config; }
-            } elseif (empty($inputInterface)) {
-                $inputInterface = $iface;
-                $inputConfig    = $config;
-            }
-        }
-    }
 }
-if (empty($inputInterface))  $inputInterface  = 'eth0';
-if (empty($outputInterface)) $outputInterface = 'eth1';
+
+$wanConfigFile = $inputInterface !== '' ? netplanFileFor($netplanDir, $inputInterface) : '';
+$wanManagedElsewhere = $wanConfigFile !== '' && $wanConfigFile !== $yamlFilePath;
 
 $inputType = (isset($inputConfig['dhcp4']) && $inputConfig['dhcp4']) ? 'dhcp' : 'static';
 $inputAddress = '';
@@ -340,6 +375,13 @@ if (isset($outputConfig['addresses'][0])) {
 }
 
 $wanLive = getInterfaceLiveInfo($inputInterface);
+
+if ($inputAddress === '' && $wanLive['ip'] !== '—') {
+    $inputAddress = $wanLive['ip'];
+    if ($inputSubnetMask === '' && $wanLive['mask'] !== '—') $inputSubnetMask = $wanLive['mask'];
+}
+if ($inputGateway === '' && $wanLive['gateway'] !== '—') $inputGateway = $wanLive['gateway'];
+if ($inputDNS === '' && !empty($wanLive['dns']))          $inputDNS     = implode(', ', $wanLive['dns']);
 ?>
 
 <link rel="stylesheet" href="assets/css/pages/netsettings.css?v=<?php echo $netsettingsAssetsVer; ?>">
@@ -593,6 +635,15 @@ $wanState = [
 
         <input type="hidden" name="input_interface"  value="<?php echo htmlspecialchars($inputInterface); ?>">
         <input type="hidden" name="output_interface" value="<?php echo htmlspecialchars($outputInterface); ?>">
+
+        <?php if ($wanManagedElsewhere): ?>
+        <div class="net-note">
+            Сейчас <span class="mono"><?php echo htmlspecialchars($inputInterface); ?></span> настраивается файлом
+            <span class="mono"><?php echo htmlspecialchars(basename($wanConfigFile)); ?></span>, а не панелью.
+            Поля заполнены тем, что реально поднято на интерфейсе. Если применить настройки,
+            панель опишет его в своём файле и возьмёт управление на себя.
+        </div>
+        <?php endif; ?>
 
         <div class="net-form-fields">
 
