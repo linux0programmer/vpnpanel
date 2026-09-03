@@ -673,6 +673,48 @@ configure_dns_early() {
     log_info "DNS настроен (защищён от перезаписи)"
 }
 
+apache_installed() {
+    dpkg-query -W -f='${Status}' apache2 2>/dev/null | grep -q "install ok installed"
+}
+
+apache_present() {
+    dpkg-query -W -f='${Status}' apache2 2>/dev/null | grep -qE "^install "
+}
+
+drop_stale_apache_config() {
+    apache_present && return 0
+    [ -d /etc/apache2 ] || return 0
+    log_warn "Найден /etc/apache2 от прошлой установки, а пакета нет — убираю"
+    log_warn "иначе postinst apache2 споткнётся о включённые модули, которых уже нет"
+    rm -rf /etc/apache2
+}
+
+repair_apache_mpm() {
+    apache_installed && return 0
+
+    log_warn "apache2 не настроился — разбираю конфликт MPM"
+    log_warn "postinst успел включить mpm_prefork и упал на ещё не распакованном php"
+
+    rm -f /etc/apache2/mods-enabled/php*.load /etc/apache2/mods-enabled/php*.conf
+    a2dismod -f mpm_prefork >/dev/null 2>&1 || true
+    a2dismod -f mpm_event >/dev/null 2>&1 || true
+    a2enmod mpm_event >/dev/null 2>&1 || true
+
+    timeout 300 dpkg --configure -a </dev/null || true
+    if apache_installed; then
+        log_info "apache2 настроен после ремонта MPM"
+        return 0
+    fi
+
+    log_warn "Переустанавливаю apache2 с чистой конфигурацией"
+    rm -rf /etc/apache2
+    timeout 600 apt-get install -y --reinstall apache2 </dev/null || true
+    timeout 600 apt-get install -y libapache2-mod-php php </dev/null || true
+    timeout 300 dpkg --configure -a </dev/null || true
+
+    apache_installed
+}
+
 install_packages() {
     {
         echo ""
@@ -724,13 +766,23 @@ install_packages() {
 
     chattr -i /etc/resolv.conf 2>/dev/null || true
     local apt_opts=(-y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold")
+
+    drop_stale_apache_config
+    log_step "Ставлю apache2 отдельно, до php..."
+    apt_run 900 install "${apt_opts[@]}" apache2 || log_warn "apache2 отдельным заходом не встал — пробую вместе со всеми"
+    apache_installed || repair_apache_mpm || true
+
+    log_step "Ставлю остальные пакеты..."
     if ! apt_run 1800 install "${apt_opts[@]}" "${PACKAGES_TO_INSTALL[@]}"; then
         log_warn "Первая попытка не удалась, пробуем восстановиться..."
         timeout 300 dpkg --configure -a --force-confdef --force-confold </dev/null || true
         apt_run 600 -f install -y || true
+        apache_installed || repair_apache_mpm || true
         apt-get clean
         apt_run 1800 install "${apt_opts[@]}" "${PACKAGES_TO_INSTALL[@]}" || true
     fi
+
+    apache_installed || repair_apache_mpm || true
     chattr +i /etc/resolv.conf 2>/dev/null || true
 
     local missing=()
