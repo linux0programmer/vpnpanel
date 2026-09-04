@@ -372,6 +372,24 @@ manifest_gate() {
     return 0
 }
 
+unreleased_count() {
+    local ref="$1" count
+    [ -z "$ref" ] && return 1
+    git -C "$SRC" rev-parse --verify --quiet "origin/$MANIFEST_BRANCH" >/dev/null 2>&1 || return 1
+    count=$(git -C "$SRC" rev-list --count "$ref..origin/$MANIFEST_BRANCH" 2>/dev/null) || return 1
+    case "$count" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$count" -gt 0 ] || return 1
+    printf '%s' "$count"
+}
+
+report_unreleased() {
+    local ref="$1" ahead
+    ahead=$(unreleased_count "$ref") || return 0
+    log INFO "в репозитории есть $ahead изменений после $ref — они ещё не выпущены"
+    log INFO "они появятся, когда выйдет следующий релиз и release.conf укажет на него"
+    return 0
+}
+
 code_version() {
     grep -m1 '^SCRIPT_VERSION=' "$WEB_DIR/update.sh" 2>/dev/null | cut -d= -f2
 }
@@ -433,7 +451,8 @@ deploy() {
     current_sha=$(printf '%s' "$current" | awk '{print $2}')
 
     if [ "$current_sha" = "$target_sha" ] && [ -z "$requested" ]; then
-        log INFO "уже развёрнуто: $current — обновление не требуется"
+        log INFO "установлена последняя выпущенная версия: $current"
+        report_unreleased "$ref"
         return 0
     fi
 
@@ -536,6 +555,14 @@ check() {
     printf 'версия схемы: %s\n' "$(installed_version)"
     printf 'доступно:     %s\n' "$(target_ref 2>/dev/null || printf 'не определено')"
     printf 'снимков:      %s\n' "$(ls -1d "$SNAPSHOTS"/*/ 2>/dev/null | wc -l)"
+
+    local ref ahead
+    ref=$(target_ref 2>/dev/null) || ref=""
+    if ahead=$(unreleased_count "$ref"); then
+        printf 'не выпущено:  %s изменений в %s после %s\n' "$ahead" "$MANIFEST_BRANCH" "$ref"
+    else
+        printf 'не выпущено:  нет\n'
+    fi
 }
 
 auto() {
