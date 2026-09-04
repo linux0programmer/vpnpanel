@@ -594,7 +594,12 @@ deploy() {
 rollback() {
     local dir="$1" pin
     [ -z "$dir" ] && dir=$(valid_snapshots | head -1)
-    [ -z "$dir" ] && { log ERROR "пригодных снимков нет"; return 1; }
+    if [ -z "$dir" ]; then
+        log ERROR "пригодных снимков нет"
+        log INFO "снимок делается перед каждой выкладкой, так что первый появится после первого обновления"
+        log INFO "проверить откат прямо сейчас: vpn-panel-deploy deploy <старый тег>, затем rollback"
+        return 1
+    fi
     [ -d "$dir" ] || dir="$SNAPSHOTS/$dir"
     restore_snapshot "${dir%/}" || return 1
     rm -f "$PENDING_FILE"

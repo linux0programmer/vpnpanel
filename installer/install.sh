@@ -1446,7 +1446,11 @@ EOF
         /usr/local/sbin/vpn-panel-routing apply >/dev/null 2>&1             && log_info "Правила маршрутизации применены"             || log_warn "Не удалось применить правила маршрутизации (проверьте vpn-panel-routing status)"
     fi
 
-    log_info "${INSTALL_RELEASE:+Выпуск $INSTALL_RELEASE сохранён}${INSTALL_RELEASE:-Выпуск не определён — первое обновление подтянет релиз}"
+    if [ -n "$INSTALL_RELEASE" ]; then
+        log_info "Выпуск $INSTALL_RELEASE сохранён"
+    else
+        log_warn "Выпуск не определён — первое обновление подтянет релиз из release.conf"
+    fi
 }
 
 verify_services() {
@@ -1588,6 +1592,9 @@ do_remove() {
     rm -f /etc/systemd/system/vpn-panel-routing.service
     systemctl daemon-reload 2>/dev/null || true
     rm -f /usr/local/sbin/vpn-panel-deploy /usr/local/sbin/vpn-panel-routing
+    if [ -d /opt/vpn-panel/releases ] && [ -n "$(ls -A /opt/vpn-panel/releases 2>/dev/null)" ]; then
+        log_warn "Удаляю снимки прошлой установки — они содержат её настройки сети и не подойдут новой"
+    fi
     rm -rf /opt/vpn-panel
     rm -f /etc/systemd/system/vpn-healthcheck.*
     rm -f /var/run/vpn-panel-*.state /var/run/vpn-panel-*.state.tmp /var/run/vpn-panel-*.pid
