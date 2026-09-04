@@ -97,26 +97,6 @@
         }).join('');
     }
 
-    async function loadChannels() {
-        const data = await api('channels');
-        if (!data.ok) return;
-        (data.channels || []).forEach(function (c) {
-            const opt = document.createElement('option');
-            opt.value = c.iface;
-            const label = c.iface === 'tun0' ? 'tun0 — через VPN-туннель' : c.iface;
-            opt.textContent = label + (c.active ? ' — активный' : '')
-                + (c.state !== 'up' ? ' (' + c.state + ')' : '');
-            el.iface.appendChild(opt);
-        });
-        const known = Array.prototype.map.call(el.iface.options, function (o) { return o.value; });
-        if (data.tunnel && known.indexOf('tun0') === -1) {
-            const opt = document.createElement('option');
-            opt.value = 'tun0';
-            opt.textContent = 'tun0 — через VPN-туннель';
-            el.iface.appendChild(opt);
-        }
-    }
-
     async function loadHistory(showLast) {
         const data = await api('history');
         if (!data.ok) return;
@@ -175,7 +155,6 @@
 
     el.run.addEventListener('click', start);
 
-    loadChannels();
     loadHistory(true);
     api('status').then(function (data) {
         if (data.state === 'running') {

@@ -1,14 +1,16 @@
 <?php
 
 require_once __DIR__ . '/../includes/guard.php';
+require_once __DIR__ . '/../includes/vpn_helpers.php';
 
 if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     header("Location: login.php");
     exit();
 }
 
-$speedAssetsVer = '1.1.0';
+$speedAssetsVer = '1.2.0';
 $speedBinary    = is_file('/usr/local/bin/speedtest') && is_executable('/usr/local/bin/speedtest');
+$speedChannels  = vp_speedChannels();
 ?>
 
 <link rel="stylesheet" href="assets/css/pages/speed.css?v=<?php echo $speedAssetsVer; ?>">
@@ -54,6 +56,17 @@ $speedBinary    = is_file('/usr/local/bin/speedtest') && is_executable('/usr/loc
         <label for="speed-iface" class="speed-label">Через какой канал мерить</label>
         <select id="speed-iface" class="select">
             <option value="">Текущий маршрут по умолчанию</option>
+            <?php foreach ($speedChannels as $chan): ?>
+            <option value="<?php echo htmlspecialchars($chan['iface']); ?>">
+                <?php
+                    $label = $chan['iface'];
+                    if ($chan['tunnel'])   $label .= ' — через VPN-туннель';
+                    if ($chan['active'])   $label .= ' — активный';
+                    if ($chan['state'] !== 'up') $label .= ' (' . $chan['state'] . ')';
+                    echo htmlspecialchars($label);
+                ?>
+            </option>
+            <?php endforeach; ?>
         </select>
         <button id="speed-run" type="button" class="btn btn--primary">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="16" height="16">

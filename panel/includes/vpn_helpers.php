@@ -254,3 +254,45 @@ function vp_pollVpnUp(int $timeoutSec = 15): bool {
     }
     return false;
 }
+
+function vp_ifaceCidr(string $iface): string {
+    $out = @shell_exec('ip -4 -o addr show ' . escapeshellarg($iface) . ' scope global 2>/dev/null');
+    if ($out && preg_match('/inet ([\d.]+\/\d+)/', $out, $m)) return $m[1];
+    return '-';
+}
+
+function vp_defaultRouteIface(): string {
+    $out = @shell_exec('ip route show default 2>/dev/null');
+    if ($out && preg_match('/dev (\S+)/', $out, $m)) return $m[1];
+    return '';
+}
+
+function vp_speedChannels(): array {
+    $lan    = vp_panelConf('LAN', '');
+    $active = vp_defaultRouteIface();
+    $list   = [];
+
+    $entries = @scandir('/sys/class/net');
+    if (!is_array($entries)) return $list;
+    sort($entries);
+
+    foreach ($entries as $iface) {
+        if ($iface === '.' || $iface === '..' || $iface === 'lo') continue;
+        if ($iface === $lan) continue;
+        if (preg_match('/^(docker|veth|br-|virbr|dummy)/', $iface)) continue;
+
+        $cidr    = vp_ifaceCidr($iface);
+        $operRaw = @file_get_contents('/sys/class/net/' . $iface . '/operstate');
+        $oper    = is_string($operRaw) ? trim($operRaw) : '';
+        $tunnel  = (bool)preg_match('/^(tun|wg)/', $iface);
+
+        $list[] = [
+            'iface'   => $iface,
+            'address' => $cidr,
+            'state'   => $cidr === '-' ? 'no-ip' : (($oper === 'up' || $oper === 'unknown') ? 'up' : 'down'),
+            'active'  => $iface === $active,
+            'tunnel'  => $tunnel,
+        ];
+    }
+    return $list;
+}
