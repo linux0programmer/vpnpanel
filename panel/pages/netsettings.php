@@ -8,7 +8,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     exit();
 }
 
-$netsettingsAssetsVer = '6.4.0';
+$netsettingsAssetsVer = '6.5.0';
 
 $netplanDir   = '/etc/netplan/';
 $yamlFilePath = null;
@@ -308,8 +308,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['wan_action'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_settings'])) {
     $data = readYamlFile($yamlFilePath);
 
+    if ($data === null && file_exists($yamlFilePath) && filesize($yamlFilePath) === 0) {
+        $data = ['network' => ['version' => 2, 'renderer' => 'networkd', 'ethernets' => []]];
+    }
+
     if ($data === null) {
-        $flashMessage = 'Ошибка чтения файла конфигурации';
+        if (!file_exists($yamlFilePath)) {
+            $why = 'файла нет';
+        } elseif (!is_readable($yamlFilePath)) {
+            $why = 'нет прав на чтение (ожидается 660 root:www-data)';
+        } elseif (!is_writable($yamlFilePath)) {
+            $why = 'файл только для чтения';
+        } else {
+            $why = 'не разбирается как YAML';
+        }
+        $flashMessage = 'Не прочитать ' . basename($yamlFilePath) . ': ' . $why;
         $flashType    = 'error';
     } else {
         $newType         = $_POST['connection_type']  ?? '';
@@ -768,8 +781,13 @@ $wanState = [
 
         <?php if ($data['foreign']): ?>
         <div class="net-note">
-            Управляется файлом <span class="mono"><?php echo htmlspecialchars($data['file'] !== '' ? basename($data['file']) : 'вне панели'); ?></span>.
-            Применение настроек передаст управление панели.
+            <?php if ($data['file'] !== ''): ?>
+                Управляется файлом <span class="mono"><?php echo htmlspecialchars(basename($data['file'])); ?></span>.
+                Применение настроек передаст управление панели.
+            <?php else: ?>
+                Интерфейс не описан ни в одном файле netplan — адрес получен помимо него.
+                Применение настроек добавит его в конфигурацию панели.
+            <?php endif; ?>
         </div>
         <?php endif; ?>
 

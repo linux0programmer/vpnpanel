@@ -296,7 +296,8 @@ PYEOF
 }
 
 netplan_reload() {
-    chmod 600 "$NETPLAN_FILE" 2>/dev/null || true
+    chown root:www-data "$NETPLAN_FILE" 2>/dev/null || true
+    chmod 660 "$NETPLAN_FILE" 2>/dev/null || true
     netplan apply 2>/dev/null
 }
 

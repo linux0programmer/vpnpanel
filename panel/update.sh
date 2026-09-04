@@ -140,6 +140,16 @@ for f in /var/www/vpn-state /var/www/settings; do
     fi
 done
 
+if [ -f "$PANEL_NETPLAN" ]; then
+    np_perms=$(stat -c '%a' "$PANEL_NETPLAN" 2>/dev/null)
+    np_owner=$(stat -c '%U:%G' "$PANEL_NETPLAN" 2>/dev/null)
+    if [ "$np_perms" != "660" ] || [ "$np_owner" != "root:www-data" ]; then
+        chown root:www-data "$PANEL_NETPLAN" 2>/dev/null || true
+        chmod 660 "$PANEL_NETPLAN" 2>/dev/null && \
+            log_info "Исправлены права $PANEL_NETPLAN: $np_owner $np_perms → root:www-data 660"
+    fi
+fi
+
 if [ -f /var/www/settings ]; then
     settings_added=""
     for pair in "vpnchecker=true" "autoupvpn=true" "failover=true" "failover_first=false" \

@@ -661,7 +661,8 @@ EOF
         write_netplan_static
     fi
 
-    chmod 600 "$NETPLAN_FILE"
+    chown root:www-data "$NETPLAN_FILE" 2>/dev/null || true
+    chmod 660 "$NETPLAN_FILE"
 
     if [ -n "$SSH_IFACE" ] && [ "$SSH_IFACE" = "$INPUT_INTERFACE" ]; then
         trap '' HUP PIPE
