@@ -60,6 +60,7 @@
     }
 
     function renderResult(row) {
+        if (!row) return;
         el.download.textContent = row.download.toFixed(1);
         el.upload.textContent   = row.upload.toFixed(1);
         el.ping.textContent     = row.ping.toFixed(1);
@@ -102,11 +103,13 @@
         (data.channels || []).forEach(function (c) {
             const opt = document.createElement('option');
             opt.value = c.iface;
-            opt.textContent = c.iface + (c.active ? ' — активный' : '')
+            const label = c.iface === 'tun0' ? 'tun0 — через VPN-туннель' : c.iface;
+            opt.textContent = label + (c.active ? ' — активный' : '')
                 + (c.state !== 'up' ? ' (' + c.state + ')' : '');
             el.iface.appendChild(opt);
         });
-        if (data.tunnel) {
+        const known = Array.prototype.map.call(el.iface.options, function (o) { return o.value; });
+        if (data.tunnel && known.indexOf('tun0') === -1) {
             const opt = document.createElement('option');
             opt.value = 'tun0';
             opt.textContent = 'tun0 — через VPN-туннель';
@@ -114,9 +117,11 @@
         }
     }
 
-    async function loadHistory() {
+    async function loadHistory(showLast) {
         const data = await api('history');
-        if (data.ok) renderHistory(data.history || []);
+        if (!data.ok) return;
+        renderHistory(data.history || []);
+        if (showLast && data.last) renderResult(data.last);
     }
 
     function stopPolling() {
@@ -137,7 +142,7 @@
         if (data.state === 'done') {
             setState('готов', 'emerald');
             renderResult(data.result);
-            loadHistory();
+            loadHistory(false);
             window.Toast && Toast.success('Замер завершён');
             return;
         }
@@ -154,8 +159,6 @@
 
     async function start() {
         clearError();
-        el.result.hidden = true;
-        el.meta.hidden = true;
         busy(true);
         setState('идёт замер', 'cyan');
         el.progressText.textContent = 'Идёт замер…';
@@ -173,7 +176,7 @@
     el.run.addEventListener('click', start);
 
     loadChannels();
-    loadHistory();
+    loadHistory(true);
     api('status').then(function (data) {
         if (data.state === 'running') {
             busy(true);

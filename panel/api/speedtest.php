@@ -31,7 +31,14 @@ function st_readJson(string $path) {
     return is_array($decoded) ? $decoded : null;
 }
 
-function st_channels(): array {
+function st_ifaceAddress(string $iface): string {
+    $safe = escapeshellarg($iface);
+    $out = @shell_exec("ip -4 -o addr show $safe scope global 2>/dev/null");
+    if ($out && preg_match('/inet ([\d.\/]+)/', $out, $m)) return $m[1];
+    return '-';
+}
+
+function st_channelsFromRouting(): array {
     $out = @shell_exec('sudo -n /usr/local/sbin/vpn-panel-routing status 2>/dev/null');
     $list = [];
     foreach (preg_split('/\r?\n/', (string)$out) as $line) {
@@ -40,19 +47,53 @@ function st_channels(): array {
         if (count($parts) < 6) continue;
         $flags = explode(',', $parts[5]);
         $list[] = [
-            'iface'  => $parts[0],
+            'iface'   => $parts[0],
             'address' => $parts[3],
-            'state'  => $flags[0],
-            'active' => in_array('active', $flags, true),
+            'state'   => $flags[0],
+            'active'  => in_array('active', $flags, true),
         ];
     }
     return $list;
 }
 
+function st_channelsFromKernel(): array {
+    $lan = vp_panelConf('LAN', '');
+    $activeOut = @shell_exec("ip route show default 2>/dev/null");
+    $active = '';
+    if ($activeOut && preg_match('/dev (\S+)/', $activeOut, $m)) $active = $m[1];
+
+    $list = [];
+    foreach (@scandir('/sys/class/net') ?: [] as $iface) {
+        if ($iface === '.' || $iface === '..' || $iface === 'lo') continue;
+        if ($iface === $lan) continue;
+        if (preg_match('/^(docker|veth|br-|virbr|wg)/', $iface)) continue;
+
+        $address = st_ifaceAddress($iface);
+        $operRaw = @file_get_contents("/sys/class/net/$iface/operstate");
+        $oper = is_string($operRaw) ? trim($operRaw) : '';
+
+        $list[] = [
+            'iface'   => $iface,
+            'address' => $address,
+            'state'   => $address === '-' ? 'no-ip' : ($oper === 'up' || $oper === 'unknown' ? 'up' : 'down'),
+            'active'  => $iface === $active,
+        ];
+    }
+    return $list;
+}
+
+function st_channels(): array {
+    $list = st_channelsFromRouting();
+    if (!empty($list)) return $list;
+    return st_channelsFromKernel();
+}
+
 function st_allowedIfaces(): array {
     $allowed = [];
     foreach (st_channels() as $c) $allowed[] = $c['iface'];
-    if (is_dir('/sys/class/net/tun0')) $allowed[] = 'tun0';
+    foreach (['tun0', 'wg0'] as $t) {
+        if (is_dir('/sys/class/net/' . $t) && !in_array($t, $allowed, true)) $allowed[] = $t;
+    }
     return $allowed;
 }
 
@@ -111,7 +152,8 @@ if ($action === 'channels') {
 }
 
 if ($action === 'history') {
-    st_reply(['ok' => true, 'history' => st_history()]);
+    $rows = st_history();
+    st_reply(['ok' => true, 'history' => $rows, 'last' => $rows[0] ?? null]);
 }
 
 if ($action === 'start') {

@@ -7,7 +7,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     exit();
 }
 
-$speedAssetsVer = '1.0.1';
+$speedAssetsVer = '1.1.0';
 $speedBinary    = is_file('/usr/local/bin/speedtest') && is_executable('/usr/local/bin/speedtest');
 ?>
 
