@@ -8,7 +8,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     exit();
 }
 
-$netsettingsAssetsVer = '6.2.0';
+$netsettingsAssetsVer = '6.3.0';
 
 $netplanDir   = '/etc/netplan/';
 $yamlFilePath = null;
@@ -75,8 +75,8 @@ function netplanFileFor(string $dir, string $iface): string {
 }
 
 function wanFormData(string $iface, string $fallbackGateway, array $allEthernets, string $netplanDir, string $ownFile): array {
-    $cfg  = $allEthernets[$iface] ?? [];
-    $type = (isset($cfg['dhcp4']) && $cfg['dhcp4']) ? 'dhcp' : 'static';
+    $cfg   = $allEthernets[$iface] ?? [];
+    $known = array_key_exists($iface, $allEthernets);
 
     $addr = ''; $mask = ''; $gw = ''; $dns = '';
 
@@ -97,6 +97,17 @@ function wanFormData(string $iface, string $fallbackGateway, array $allEthernets
     }
 
     $live = getInterfaceLiveInfo($iface);
+
+    if ($known) {
+        $type = (isset($cfg['dhcp4']) && $cfg['dhcp4']) ? 'dhcp' : 'static';
+    } elseif ($live['dhcp'] === true) {
+        $type = 'dhcp';
+    } elseif ($live['dhcp'] === false) {
+        $type = 'static';
+    } else {
+        $type = 'static';
+    }
+
     if ($addr === '' && $live['ip'] !== '—') {
         $addr = $live['ip'];
         if ($mask === '' && $live['mask'] !== '—') $mask = $live['mask'];
@@ -110,12 +121,13 @@ function wanFormData(string $iface, string $fallbackGateway, array $allEthernets
 
     return [
         'type'    => $type,
+        'known'   => $known,
         'address' => $addr,
         'mask'    => $mask,
         'gateway' => $gw,
         'dns'     => $dns,
         'file'    => $file,
-        'foreign' => $file !== '' && $file !== $ownFile,
+        'foreign' => ($file !== '' && $file !== $ownFile) || !$known,
     ];
 }
 
@@ -134,7 +146,7 @@ function getInterfaceLiveInfo(string $iface): array {
     $info = [
         'status' => 'down', 'ip' => '—', 'mask' => '—', 'gateway' => '—',
         'dns' => [], 'mac' => '—', 'speed' => '—',
-        'rx_bytes' => 0, 'tx_bytes' => 0,
+        'rx_bytes' => 0, 'tx_bytes' => 0, 'dhcp' => null,
     ];
     if (empty($iface)) return $info;
 
@@ -145,6 +157,7 @@ function getInterfaceLiveInfo(string $iface): array {
     if ($out && preg_match('/inet ([\d.]+)\/(\d+)/', $out, $m)) {
         $info['ip']   = $m[1];
         $info['mask'] = $m[2];
+        $info['dhcp'] = (bool)preg_match('/\bdynamic\b/', $out);
     }
 
     $link = shell_exec("ip link show $safeIface 2>/dev/null");
@@ -739,8 +752,14 @@ $wanState = [
 
         <?php if ($data['foreign']): ?>
         <div class="net-note">
-            <b>Настроен вне панели.</b> <span class="mono"><?php echo htmlspecialchars($ci); ?></span>
-            описан файлом <span class="mono"><?php echo htmlspecialchars(basename($data['file'])); ?></span>.
+            <b>Настроен вне панели.</b>
+            <?php if ($data['file'] !== ''): ?>
+                <span class="mono"><?php echo htmlspecialchars($ci); ?></span> описан файлом
+                <span class="mono"><?php echo htmlspecialchars(basename($data['file'])); ?></span>.
+            <?php else: ?>
+                <span class="mono"><?php echo htmlspecialchars($ci); ?></span> настраивается netplan-файлом,
+                который панели не прочитать — такие файлы обычно доступны только root.
+            <?php endif; ?>
             Поля заполнены тем, что реально поднято на интерфейсе; если применить настройки,
             панель опишет его в своём файле и возьмёт управление на себя.
         </div>
