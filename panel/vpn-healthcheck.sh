@@ -651,7 +651,7 @@ check_iptables() {
     iptables -A FORWARD -i "$LAN_IF" -o tun0 -j ACCEPT
     iptables -A FORWARD -i tun0 -o "$LAN_IF" -m state --state RELATED,ESTABLISHED -j ACCEPT
     iptables -A FORWARD -i "$LAN_IF" -o "$LAN_IF" -j ACCEPT
-    [ -n "$WAN_IF" ] && iptables -A FORWARD -i "$LAN_IF" -o "$WAN_IF" -j REJECT --reject-with icmp-net-unreachable
+    iptables -A FORWARD -i "$LAN_IF" ! -o tun0 -j REJECT --reject-with icmp-net-unreachable
     iptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
     iptables -t nat -C POSTROUTING -o tun0 -s "$LAN_NET" -j MASQUERADE 2>/dev/null || \
         iptables -t nat -A POSTROUTING -o tun0 -s "$LAN_NET" -j MASQUERADE

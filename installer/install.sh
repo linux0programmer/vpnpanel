@@ -998,10 +998,7 @@ EOF
     iptables -A FORWARD -i tun0 -o "$OUTPUT_INTERFACE" -m state --state RELATED,ESTABLISHED -j ACCEPT
     iptables -A FORWARD -i "$OUTPUT_INTERFACE" -o "$OUTPUT_INTERFACE" -j ACCEPT
 
-    local wan_if
-    for wan_if in ${WAN_INTERFACES:-$INPUT_INTERFACE}; do
-        iptables -A FORWARD -i "$OUTPUT_INTERFACE" -o "$wan_if" -j REJECT --reject-with icmp-net-unreachable
-    done
+    iptables -A FORWARD -i "$OUTPUT_INTERFACE" ! -o tun0 -j REJECT --reject-with icmp-net-unreachable
 
     iptables -t nat -A POSTROUTING -o tun0 -s "$LOCAL_NET" -j MASQUERADE
 

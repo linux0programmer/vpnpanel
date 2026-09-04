@@ -214,6 +214,7 @@ if [ -f /etc/vpn-panel.conf ]; then
         [ "$ks_policy" != "DROP" ] && ks_bad=1
         [ "$ks_bad" -eq 0 ] && ! iptables -t nat -C POSTROUTING -o tun0 -s "$LAN_NET" -j MASQUERADE 2>/dev/null && ks_bad=1
         [ "$ks_bad" -eq 0 ] && ! iptables -C FORWARD -i "$ks_lan" -o tun0 -j ACCEPT 2>/dev/null && ks_bad=1
+        [ "$ks_bad" -eq 0 ] && ! iptables -C FORWARD -i "$ks_lan" ! -o tun0 -j REJECT --reject-with icmp-net-unreachable 2>/dev/null && ks_bad=1
 
         if [ "$ks_bad" = "1" ]; then
             log_warn "Kill Switch правила відсутні або неповні — налаштовую (LAN=$ks_lan, WAN=$ks_wan)"
@@ -222,7 +223,7 @@ if [ -f /etc/vpn-panel.conf ]; then
             iptables -A FORWARD -i "$ks_lan" -o tun0 -j ACCEPT
             iptables -A FORWARD -i tun0 -o "$ks_lan" -m state --state RELATED,ESTABLISHED -j ACCEPT
             iptables -A FORWARD -i "$ks_lan" -o "$ks_lan" -j ACCEPT
-            iptables -A FORWARD -i "$ks_lan" -o "$ks_wan" -j REJECT --reject-with icmp-net-unreachable
+            iptables -A FORWARD -i "$ks_lan" ! -o tun0 -j REJECT --reject-with icmp-net-unreachable
             iptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
             iptables -t nat -C POSTROUTING -o tun0 -s "$LAN_NET" -j MASQUERADE 2>/dev/null || \
                 iptables -t nat -A POSTROUTING -o tun0 -s "$LAN_NET" -j MASQUERADE

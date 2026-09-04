@@ -268,10 +268,14 @@ if [ -n "$ACTUAL_LAN" ]; then
     fi
 
     if [ -n "$ACTUAL_WAN" ]; then
-        if has_fw_rule "^-A FORWARD -i $ACTUAL_LAN -o $ACTUAL_WAN -j REJECT"; then
-            pass "FORWARD: $ACTUAL_LAN → $ACTUAL_WAN REJECT (Kill Switch активен)"
+        if has_fw_rule "^-A FORWARD -i $ACTUAL_LAN ! -o tun0 -j REJECT"; then
+            pass "FORWARD: $ACTUAL_LAN → всё мимо tun0 REJECT (Kill Switch активен)"
+        elif has_fw_rule "^-A FORWARD -i $ACTUAL_LAN -o $ACTUAL_WAN -j REJECT"; then
+            warn "FORWARD: запрет задан только для $ACTUAL_WAN — новая сетевая карта не будет перекрыта явно"
+        elif [ "$fwd_policy" = "DROP" ]; then
+            warn "FORWARD: явного REJECT нет, но политика DROP — трафик LAN наружу всё равно не проходит"
         else
-            fail "FORWARD: $ACTUAL_LAN → $ACTUAL_WAN REJECT — ОТСУТСТВУЕТ (Kill Switch не блокирует LAN→WAN)"
+            fail "FORWARD: $ACTUAL_LAN наружу не перекрыт и политика не DROP — локальная сеть ходит мимо туннеля"
         fi
     fi
 fi
