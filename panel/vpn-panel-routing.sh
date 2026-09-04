@@ -462,6 +462,23 @@ remove_wan() {
     printf 'канал %s удалён, осталось: %s\n' "$iface" "$out"
 }
 
+netplan_dump() {
+    command -v netplan >/dev/null 2>&1 || return 1
+    netplan get all 2>/dev/null
+}
+
+netplan_owner() {
+    local iface="$1" f found=""
+    [ -z "$iface" ] && return 1
+    case "$iface" in *[!a-zA-Z0-9_.-]*) return 1 ;; esac
+    for f in /etc/netplan/*.yaml /etc/netplan/*.yml; do
+        [ -f "$f" ] || continue
+        grep -qE "^[[:space:]]*$iface:" "$f" 2>/dev/null && found="$f"
+    done
+    [ -n "$found" ] && printf '%s\n' "$found"
+    return 0
+}
+
 free_ifaces() {
     local used w iface
     used="$(wan_list) $(lan_iface)"
@@ -514,6 +531,8 @@ vpn-panel-routing <команда>
   set-primary <iface>   сделать канал основным (первым в списке приоритетов)
   move-wan <iface> up|down  поменять канал местами с соседним по приоритету
   free                  сетевые карты, не занятые под WAN или LAN
+  netplan-dump          действующая конфигурация netplan (объединённая)
+  netplan-owner <iface> какой файл netplan описывает интерфейс
 EOF
 }
 
@@ -532,5 +551,7 @@ case "${1:-}" in
     set-primary) set_primary "$2" ;;
     move-wan)   move_wan "$2" "$3" ;;
     free)       free_ifaces ;;
+    netplan-dump)  netplan_dump ;;
+    netplan-owner) netplan_owner "$2" ;;
     *)          usage; exit 1 ;;
 esac

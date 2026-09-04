@@ -403,6 +403,8 @@ SUDOERS_REQUIRED="
 /bin/systemctl poweroff
 /usr/local/sbin/vpn-panel-routing status
 /usr/local/sbin/vpn-panel-routing free
+/usr/local/sbin/vpn-panel-routing netplan-dump
+/usr/local/sbin/vpn-panel-routing netplan-owner *
 /usr/local/sbin/vpn-panel-routing apply
 /usr/local/sbin/vpn-panel-routing set-active *
 /usr/local/sbin/vpn-panel-routing set-primary *

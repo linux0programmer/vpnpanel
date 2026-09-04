@@ -8,7 +8,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     exit();
 }
 
-$netsettingsAssetsVer = '6.3.0';
+$netsettingsAssetsVer = '6.4.0';
 
 $netplanDir   = '/etc/netplan/';
 $yamlFilePath = null;
@@ -52,6 +52,17 @@ function netplanFiles(string $dir): array {
 
 function readAllNetplanEthernets(string $dir): array {
     $merged = [];
+
+    $dump = vp_routing('netplan-dump');
+    if (trim($dump) !== '') {
+        $parsed = @yaml_parse($dump);
+        if (is_array($parsed) && !empty($parsed['network']['ethernets'])) {
+            foreach ($parsed['network']['ethernets'] as $iface => $config) {
+                if (is_array($config)) $merged[$iface] = $config;
+            }
+        }
+    }
+
     foreach (netplanFiles($dir) as $file) {
         $parsed = @yaml_parse_file($file);
         if (!is_array($parsed) || empty($parsed['network']['ethernets'])) continue;
@@ -64,6 +75,11 @@ function readAllNetplanEthernets(string $dir): array {
 }
 
 function netplanFileFor(string $dir, string $iface): string {
+    $viaHelper = trim(vp_routing('netplan-owner ' . escapeshellarg($iface)));
+    if ($viaHelper !== '' && strpos($viaHelper, '/etc/netplan/') === 0) {
+        return $viaHelper;
+    }
+
     $found = '';
     foreach (netplanFiles($dir) as $file) {
         $parsed = @yaml_parse_file($file);
@@ -752,16 +768,8 @@ $wanState = [
 
         <?php if ($data['foreign']): ?>
         <div class="net-note">
-            <b>Настроен вне панели.</b>
-            <?php if ($data['file'] !== ''): ?>
-                <span class="mono"><?php echo htmlspecialchars($ci); ?></span> описан файлом
-                <span class="mono"><?php echo htmlspecialchars(basename($data['file'])); ?></span>.
-            <?php else: ?>
-                <span class="mono"><?php echo htmlspecialchars($ci); ?></span> настраивается netplan-файлом,
-                который панели не прочитать — такие файлы обычно доступны только root.
-            <?php endif; ?>
-            Поля заполнены тем, что реально поднято на интерфейсе; если применить настройки,
-            панель опишет его в своём файле и возьмёт управление на себя.
+            Управляется файлом <span class="mono"><?php echo htmlspecialchars($data['file'] !== '' ? basename($data['file']) : 'вне панели'); ?></span>.
+            Применение настроек передаст управление панели.
         </div>
         <?php endif; ?>
 
