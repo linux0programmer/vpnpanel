@@ -20,6 +20,7 @@
         historyBody:  document.getElementById('speed-history-body'),
         historyEmpty: document.getElementById('speed-history-empty'),
         historyCount: document.getElementById('speed-history-count'),
+        historyClear: document.getElementById('speed-history-clear'),
     };
 
     if (!el.run) return;
@@ -76,8 +77,16 @@
         el.meta.hidden = bits.length === 0;
     }
 
+    const TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">'
+        + '<path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21'
+        + 'c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 '
+        + '01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 '
+        + '1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 '
+        + '00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>';
+
     function renderHistory(rows) {
         el.historyCount.textContent = String(rows.length);
+        el.historyClear.hidden = rows.length === 0;
         if (!rows.length) {
             el.historyWrap.hidden = true;
             el.historyEmpty.hidden = false;
@@ -86,6 +95,7 @@
         el.historyEmpty.hidden = true;
         el.historyWrap.hidden = false;
         el.historyBody.innerHTML = rows.map(function (r) {
+            const key = r.id || r.time;
             return '<tr>'
                 + '<td class="mono">' + r.time + '</td>'
                 + '<td class="mono">' + (r.iface || '—') + '</td>'
@@ -93,8 +103,48 @@
                 + '<td class="mono">' + r.upload.toFixed(1) + '</td>'
                 + '<td class="mono">' + r.ping.toFixed(1) + '</td>'
                 + '<td>' + (r.server || '—') + '</td>'
+                + '<td><button type="button" class="btn btn--ghost speed-forget" '
+                + 'data-id="' + key + '" title="Удалить замер">' + TRASH + '</button></td>'
                 + '</tr>';
         }).join('');
+    }
+
+    async function forget(id) {
+        const data = await api('forget', { id: id });
+        if (!data.ok) {
+            window.Toast && Toast.error(data.error || 'Не удалось удалить замер');
+            return;
+        }
+        renderHistory(data.history || []);
+        if (!data.last) {
+            el.result.hidden = true;
+            el.meta.hidden = true;
+        } else {
+            renderResult(data.last);
+        }
+    }
+
+    async function forgetAll() {
+        const ask = window.VPNPanel && window.VPNPanel.confirm;
+        if (ask) {
+            const ok = await ask({
+                title:       'Подтвердите действие',
+                message:     'Удалить всю историю замеров?',
+                confirmText: 'Очистить',
+                cancelText:  'Отмена',
+                danger:      true,
+            });
+            if (!ok) return;
+        }
+        const data = await api('forget-all');
+        if (!data.ok) {
+            window.Toast && Toast.error(data.error || 'Не удалось очистить историю');
+            return;
+        }
+        renderHistory([]);
+        el.result.hidden = true;
+        el.meta.hidden = true;
+        window.Toast && Toast.success('История очищена');
     }
 
     async function loadHistory(showLast) {
@@ -154,6 +204,13 @@
     }
 
     el.run.addEventListener('click', start);
+
+    el.historyClear.addEventListener('click', forgetAll);
+
+    el.historyBody.addEventListener('click', function (e) {
+        const btn = e.target.closest('.speed-forget');
+        if (btn) forget(btn.dataset.id);
+    });
 
     loadHistory(true);
     api('status').then(function (data) {

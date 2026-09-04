@@ -8,7 +8,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     exit();
 }
 
-$speedAssetsVer = '1.2.0';
+$speedAssetsVer = '1.3.0';
 $speedBinary    = is_file('/usr/local/bin/speedtest') && is_executable('/usr/local/bin/speedtest');
 $speedChannels  = vp_speedChannels();
 ?>
@@ -110,7 +110,10 @@ $speedChannels  = vp_speedChannels();
             </span>
             История замеров
         </div>
-        <span id="speed-history-count" class="badge badge--slate">0</span>
+        <div class="speed-history-actions">
+            <span id="speed-history-count" class="badge badge--slate">0</span>
+            <button id="speed-history-clear" type="button" class="btn btn--ghost btn--sm" hidden>Очистить</button>
+        </div>
     </div>
 
     <div id="speed-history-empty" class="empty-state">
@@ -127,6 +130,7 @@ $speedChannels  = vp_speedChannels();
                     <th>Отдача</th>
                     <th>Задержка</th>
                     <th>Сервер</th>
+                    <th style="width:44px"></th>
                 </tr>
             </thead>
             <tbody id="speed-history-body"></tbody>

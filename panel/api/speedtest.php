@@ -53,12 +53,15 @@ function st_history(): array {
     return is_array($rows) ? $rows : [];
 }
 
+function st_writeHistory(array $rows): void {
+    @file_put_contents(ST_HISTORY, json_encode(array_values($rows), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    @chmod(ST_HISTORY, 0664);
+}
+
 function st_pushHistory(array $row): void {
     $rows = st_history();
     array_unshift($rows, $row);
-    $rows = array_slice($rows, 0, ST_KEEP);
-    @file_put_contents(ST_HISTORY, json_encode($rows, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-    @chmod(ST_HISTORY, 0664);
+    st_writeHistory(array_slice($rows, 0, ST_KEEP));
 }
 
 function st_shapeResult(array $raw, string $iface): array {
@@ -66,6 +69,7 @@ function st_shapeResult(array $raw, string $iface): array {
         return $bandwidth > 0 ? round(((int)$bandwidth * 8) / 1000000, 2) : 0.0;
     };
     return [
+        'id'       => bin2hex(random_bytes(6)),
         'time'     => date('Y-m-d H:i:s'),
         'iface'    => $iface !== '' ? $iface : ($raw['interface']['name'] ?? ''),
         'download' => $mbit($raw['download']['bandwidth'] ?? 0),
@@ -98,6 +102,35 @@ if ($action === 'channels') {
 if ($action === 'history') {
     $rows = st_history();
     st_reply(['ok' => true, 'history' => $rows, 'last' => $rows[0] ?? null]);
+}
+
+if ($action === 'forget') {
+    $id = trim((string)($_REQUEST['id'] ?? ''));
+    if ($id === '' || !preg_match('/^[a-zA-Z0-9:\- ]{1,32}$/', $id)) {
+        st_reply(['ok' => false, 'error' => 'Не указано, какой замер удалить'], 400);
+    }
+
+    $rows = st_history();
+    $kept = [];
+    $removed = 0;
+    foreach ($rows as $row) {
+        $rowId = (string)($row['id'] ?? '');
+        $match = $rowId !== '' ? ($rowId === $id) : (($row['time'] ?? '') === $id);
+        if ($match && $removed === 0) { $removed++; continue; }
+        $kept[] = $row;
+    }
+
+    if ($removed === 0) {
+        st_reply(['ok' => false, 'error' => 'Замер не найден — возможно, он уже удалён'], 404);
+    }
+
+    st_writeHistory($kept);
+    st_reply(['ok' => true, 'history' => $kept, 'last' => $kept[0] ?? null]);
+}
+
+if ($action === 'forget-all') {
+    st_writeHistory([]);
+    st_reply(['ok' => true, 'history' => [], 'last' => null]);
 }
 
 if ($action === 'start') {
