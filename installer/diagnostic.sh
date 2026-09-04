@@ -245,20 +245,23 @@ else
 fi
 
 if [ -n "$ACTUAL_LAN" ]; then
-    if iptables -C FORWARD -i "$ACTUAL_LAN" -o tun0 -j ACCEPT 2>/dev/null; then
+    IPT_FORWARD=$(iptables -S FORWARD 2>/dev/null)
+    has_fw_rule() { printf '%s\n' "$IPT_FORWARD" | grep -qE "$1"; }
+
+    if has_fw_rule "^-A FORWARD -i $ACTUAL_LAN -o tun0 -j ACCEPT\$"; then
         pass "FORWARD: $ACTUAL_LAN → tun0 ACCEPT (LAN до VPN)"
     else
         fail "FORWARD: $ACTUAL_LAN → tun0 ACCEPT — ОТСУТСТВУЕТ"
     fi
 
-    if iptables -C FORWARD -i tun0 -o "$ACTUAL_LAN" -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null; then
+    if has_fw_rule "^-A FORWARD -i tun0 -o $ACTUAL_LAN .*--state (RELATED,ESTABLISHED|ESTABLISHED,RELATED) -j ACCEPT\$"; then
         pass "FORWARD: tun0 → $ACTUAL_LAN RELATED,ESTABLISHED (обратный трафик)"
     else
         warn "FORWARD: tun0 → $ACTUAL_LAN RELATED,ESTABLISHED — ОТСУТСТВУЕТ"
     fi
 
     if [ -n "$ACTUAL_WAN" ]; then
-        if iptables -C FORWARD -i "$ACTUAL_LAN" -o "$ACTUAL_WAN" -j REJECT --reject-with icmp-net-unreachable 2>/dev/null; then
+        if has_fw_rule "^-A FORWARD -i $ACTUAL_LAN -o $ACTUAL_WAN -j REJECT"; then
             pass "FORWARD: $ACTUAL_LAN → $ACTUAL_WAN REJECT (Kill Switch активен)"
         else
             fail "FORWARD: $ACTUAL_LAN → $ACTUAL_WAN REJECT — ОТСУТСТВУЕТ (Kill Switch не блокирует LAN→WAN)"
@@ -284,17 +287,23 @@ fi
 
 section "6. iptables — INPUT chain"
 
-iptables -C INPUT -i lo -j ACCEPT 2>/dev/null && pass "INPUT lo ACCEPT" || fail "INPUT lo ACCEPT — отсутствует"
+IPT_INPUT=$(iptables -S INPUT 2>/dev/null)
 
-iptables -C INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null && \
+has_input_rule() { printf '%s\n' "$IPT_INPUT" | grep -qE "$1"; }
+
+has_input_rule '^-A INPUT -i lo -j ACCEPT$' && \
+    pass "INPUT lo ACCEPT" || \
+    fail "INPUT lo ACCEPT — отсутствует"
+
+has_input_rule '^-A INPUT .*--state (RELATED,ESTABLISHED|ESTABLISHED,RELATED) -j ACCEPT$' && \
     pass "INPUT ESTABLISHED,RELATED ACCEPT" || \
     fail "INPUT ESTABLISHED,RELATED ACCEPT — отсутствует"
 
-iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null && \
+has_input_rule '^-A INPUT -p tcp .*--dport 80 -j ACCEPT$' && \
     pass "INPUT TCP 80 (HTTP) ACCEPT" || \
     fail "INPUT TCP 80 (HTTP) ACCEPT — отсутствует (панель недоступна)"
 
-iptables -C INPUT -p tcp --dport 22 -j ACCEPT 2>/dev/null && \
+has_input_rule '^-A INPUT -p tcp .*--dport 22 -j ACCEPT$' && \
     pass "INPUT TCP 22 (SSH) ACCEPT" || \
     fail "INPUT TCP 22 (SSH) ACCEPT — отсутствует"
 
@@ -311,8 +320,8 @@ else
 fi
 
 if [ -n "$ACTUAL_LAN" ]; then
-    if iptables -C INPUT -i "$ACTUAL_LAN" -p tcp --dport 22 -j ACCEPT 2>/dev/null && \
-       iptables -C INPUT -i "$ACTUAL_LAN" -p tcp --dport 80 -j ACCEPT 2>/dev/null; then
+    if has_input_rule "^-A INPUT -i $ACTUAL_LAN -p tcp .*--dport 22 -j ACCEPT\$" && \
+       has_input_rule "^-A INPUT -i $ACTUAL_LAN -p tcp .*--dport 80 -j ACCEPT\$"; then
         pass "LAN whitelist для SSH/HTTP (перед rate-limit, любой объём connections разрешён)"
     else
         warn "LAN whitelist для SSH/HTTP отсутствует (LAN-клиенты могут попасть в rate-limit)"
@@ -320,11 +329,11 @@ if [ -n "$ACTUAL_LAN" ]; then
 fi
 
 if [ -n "$ACTUAL_LAN" ]; then
-    iptables -C INPUT -i "$ACTUAL_LAN" -p udp --dport 53 -j ACCEPT 2>/dev/null && \
+    has_input_rule "^-A INPUT -i $ACTUAL_LAN -p udp .*--dport 53 -j ACCEPT\$" && \
         pass "INPUT $ACTUAL_LAN UDP 53 (DNS)" || \
         warn "INPUT $ACTUAL_LAN UDP 53 (DNS) — отсутствует"
 
-    iptables -C INPUT -i "$ACTUAL_LAN" -p udp --dport 67 -j ACCEPT 2>/dev/null && \
+    has_input_rule "^-A INPUT -i $ACTUAL_LAN -p udp .*--dport 67 -j ACCEPT\$" && \
         pass "INPUT $ACTUAL_LAN UDP 67 (DHCP)" || \
         warn "INPUT $ACTUAL_LAN UDP 67 (DHCP) — отсутствует"
 fi
@@ -569,8 +578,18 @@ for np in /etc/netplan/*.yaml /etc/netplan/*.yml; do
         info "$np: сторонний конфиг (интерфейсы панели неизвестны — пропускаю проверку конфликта)"
         continue
     fi
-    if grep -qE "^[[:space:]]*(${np_wan:-__none__}|${np_lan:-__none__}):" "$np" 2>/dev/null; then
-        fail "$np описывает интерфейс панели ($np_wan/$np_lan) — конфликт приоритетов netplan"
+    np_hit=""
+    for np_if in "$np_wan" "$np_lan"; do
+        [ -z "$np_if" ] && continue
+        grep -qE "^[[:space:]]*$np_if:" "$np" 2>/dev/null || continue
+        if grep -qE "^[[:space:]]*$np_if:" "$PANEL_NETPLAN" 2>/dev/null; then
+            np_hit="${np_hit:+$np_hit }$np_if"
+        else
+            info "$np описывает $np_if, а панель его не трогает — режим «не менять WAN»"
+        fi
+    done
+    if [ -n "$np_hit" ]; then
+        fail "$np и $PANEL_NETPLAN описывают одни и те же интерфейсы ($np_hit) — конфликт приоритетов netplan"
     else
         info "$np: сторонний конфиг, интерфейсы панели не затрагивает"
     fi

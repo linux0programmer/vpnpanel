@@ -155,8 +155,9 @@ fetch_src() {
         return 1
     fi
 
-    moved=$(printf '%s\n' "$out" | grep -c 'forced update' 2>/dev/null || printf '0')
-    if [ "${moved:-0}" -gt 0 ]; then
+    moved=$(printf '%s\n' "$out" | grep -c 'forced update' 2>/dev/null)
+    case "$moved" in ''|*[!0-9]*) moved=0 ;; esac
+    if [ "$moved" -gt 0 ]; then
         log WARN "теги в репозитории были передвинуты ($moved) — под прежним именем теперь другой код"
         log_lines WARN "$(printf '%s\n' "$out" | grep 'forced update')"
     fi
