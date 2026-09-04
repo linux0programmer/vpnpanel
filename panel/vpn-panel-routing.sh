@@ -2,6 +2,8 @@
 
 CONF="/etc/vpn-panel.conf"
 NETPLAN_FILE="/etc/netplan/99-vpn-panel.yaml"
+EVENTS="/var/log/vpn-panel/events.log"
+MAX_EVENTS=1048576
 TABLE_BASE=100
 RULE_PRIO_BASE=1000
 PING_HOSTS=("8.8.8.8" "1.1.1.1" "9.9.9.9")
@@ -20,6 +22,26 @@ conf_set() {
     else
         printf '%s=%s\n' "$key" "$value" >> "$CONF"
     fi
+}
+
+log_event() {
+    [ "${VP_EVENT_SOURCE:-}" = "daemon" ] && return 0
+    local ts type line f sz
+    ts=$(date '+%Y-%m-%d %H:%M:%S')
+    type="$1"
+    shift
+    line="${ts}|${type}"
+    for f in "$@"; do
+        f=$(printf '%s' "$f" | tr '|\n\r' '/  ')
+        line="${line}|${f}"
+    done
+    mkdir -p "$(dirname "$EVENTS")" 2>/dev/null || true
+    echo "$line" >> "$EVENTS" 2>/dev/null || return 0
+    sz=$(stat -c%s "$EVENTS" 2>/dev/null || echo 0)
+    if [ "$sz" -gt "$MAX_EVENTS" ]; then
+        tail -n 500 "$EVENTS" > "${EVENTS}.tmp" && mv -f "${EVENTS}.tmp" "$EVENTS"
+    fi
+    chmod 666 "$EVENTS" 2>/dev/null || true
 }
 
 safe_name() { printf '%s' "$1" | tr -c 'A-Za-z0-9' '_'; }
@@ -203,6 +225,7 @@ set_active() {
     conf_set WAN "$iface"
     apply_rules
     repin_saved_endpoint
+    log_event wan_switch "${current:-неизвестно}" "$iface" "вручную"
     return 0
 }
 
@@ -304,6 +327,7 @@ add_wan() {
     fi
 
     apply_rules
+    log_event wan_added "$iface" "$note"
     printf 'добавлен канал %s (приоритет %s): %s\n' "$iface" "$(iface_index "$iface")" "$note"
 }
 
@@ -342,6 +366,7 @@ remove_wan() {
     fi
 
     apply_rules
+    log_event wan_removed "$iface" "$out"
     printf 'канал %s удалён, осталось: %s\n' "$iface" "$out"
 }
 

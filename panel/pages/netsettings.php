@@ -153,6 +153,8 @@ function vp_routingRun(string $args): array {
 }
 
 function vp_wanList(): array {
+    static $cache = null;
+    if ($cache !== null) return $cache;
     $rows = [];
     foreach (preg_split('/\r?\n/', vp_routing('status')) as $line) {
         if (trim($line) === '') continue;
@@ -169,7 +171,8 @@ function vp_wanList(): array {
             'active'   => in_array('active', $flags, true),
         ];
     }
-    return $rows;
+    $cache = $rows;
+    return $cache;
 }
 
 function vp_freeIfaces(): array {
@@ -239,9 +242,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_settings'])) {
                   !preg_match('/^[a-zA-Z0-9_:.-]{1,20}$/', $outputInterface) ||
                   $inputInterface === $outputInterface) {
             $flashMessage = 'Недопустимые интерфейсы'; $flashType = 'error';
-        } elseif (!isset($data['network']['ethernets'][$inputInterface])) {
-            $flashMessage = "Интерфейс {$inputInterface} не найден в конфигурации"; $flashType = 'error';
+        } elseif (!ifaceExists($inputInterface)) {
+            $flashMessage = "Интерфейс {$inputInterface} не найден в системе"; $flashType = 'error';
         } else {
+            if (!isset($data['network']))              $data['network'] = [];
+            if (!isset($data['network']['version']))   $data['network']['version'] = 2;
+            if (!isset($data['network']['renderer']))  $data['network']['renderer'] = 'networkd';
+            if (!isset($data['network']['ethernets'])) $data['network']['ethernets'] = [];
             unset($data['network']['ethernets'][$inputInterface]);
 
             if ($newType === 'static') {
@@ -315,9 +322,18 @@ $outputConfig    = [];
 $confWan = vp_panelConf('WAN', '');
 $confLan = vp_panelConf('LAN', '');
 
-if ($confWan !== '' && ifaceExists($confWan)) {
-    $inputInterface = $confWan;
-    $inputConfig    = $allEthernets[$confWan] ?? [];
+$wanChannelNames = [];
+foreach (vp_wanList() as $chanRow) {
+    if (!empty($chanRow['iface'])) $wanChannelNames[] = $chanRow['iface'];
+}
+
+$editIface = trim($_GET['iface'] ?? '');
+if ($editIface !== '' && !in_array($editIface, $wanChannelNames, true)) $editIface = '';
+if ($editIface === '') $editIface = $confWan;
+
+if ($editIface !== '' && ifaceExists($editIface)) {
+    $inputInterface = $editIface;
+    $inputConfig    = $allEthernets[$editIface] ?? [];
 }
 if ($confLan !== '' && ifaceExists($confLan)) {
     $outputInterface = $confLan;
@@ -338,6 +354,7 @@ if (empty($inputInterface) || empty($outputInterface)) {
 
 $wanConfigFile = $inputInterface !== '' ? netplanFileFor($netplanDir, $inputInterface) : '';
 $wanManagedElsewhere = $wanConfigFile !== '' && $wanConfigFile !== $yamlFilePath;
+$editingBackup = $confWan !== '' && $inputInterface !== '' && $inputInterface !== $confWan;
 
 $inputType = (isset($inputConfig['dhcp4']) && $inputConfig['dhcp4']) ? 'dhcp' : 'static';
 $inputAddress = '';
@@ -554,6 +571,8 @@ $wanState = [
                                 <button type="submit" class="btn btn--secondary btn--sm">Сделать активным</button>
                             </form>
                             <?php endif; ?>
+                            <a class="btn btn--ghost btn--sm"
+                               href="?menu=netsettings&amp;iface=<?php echo urlencode($row['iface']); ?>">Настроить</a>
                             <?php if (count($wanRows) > 1): ?>
                             <form method="post" class="wan-inline-form"
                                   data-confirm="Убрать канал <?php echo htmlspecialchars($row['iface']); ?> из списка?">
@@ -635,6 +654,14 @@ $wanState = [
 
         <input type="hidden" name="input_interface"  value="<?php echo htmlspecialchars($inputInterface); ?>">
         <input type="hidden" name="output_interface" value="<?php echo htmlspecialchars($outputInterface); ?>">
+
+        <?php if ($editingBackup): ?>
+        <div class="net-note">
+            Настраивается резервный канал <span class="mono"><?php echo htmlspecialchars($inputInterface); ?></span>.
+            Основной сейчас — <span class="mono"><?php echo htmlspecialchars($confWan); ?></span>;
+            чтобы вернуться к нему, нажмите «Настроить» в его строке выше.
+        </div>
+        <?php endif; ?>
 
         <?php if ($wanManagedElsewhere): ?>
         <div class="net-note">

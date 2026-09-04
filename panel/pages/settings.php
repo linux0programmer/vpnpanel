@@ -47,6 +47,29 @@ $settingGroups = [
             ],
         ],
     ],
+    'wan' => [
+        'title' => 'Каналы в интернет',
+        'icon'  => 'swap',
+        'color' => 'blue',
+        'items' => [
+            'wan_failover' => [
+                'name' => 'Автоматически переключаться на резервный канал',
+                'description' => 'Если основной провайдер перестал отвечать, сервер сам переведёт трафик на следующий живой канал из списка на странице «Сеть». Без этого пункта канал меняется только вручную, а при обрыве интернет просто пропадёт.',
+                'parent' => null,
+                'level'  => 0,
+                'icon'   => 'swap',
+                'color'  => 'blue',
+            ],
+            'wan_return' => [
+                'name' => 'Возвращаться на основной канал, когда он оживёт',
+                'description' => 'После восстановления основного провайдера трафик вернётся на него — но только после трёх подряд удачных проверок, чтобы не прыгать туда-сюда на нестабильной линии. Без этого пункта сервер останется на резервном канале до ручного переключения.',
+                'parent' => 'wan_failover',
+                'level'  => 1,
+                'icon'   => 'bolt',
+                'color'  => 'cyan',
+            ],
+        ],
+    ],
 ];
 
 $allKeys = [];
@@ -99,7 +122,7 @@ function renderToggleIcon(string $iconKey): string {
 
 function colorVar(string $color): string {
 
-    $allowed = ['emerald', 'cyan', 'violet', 'amber'];
+    $allowed = ['emerald', 'cyan', 'violet', 'amber', 'blue'];
     return in_array($color, $allowed, true) ? "var(--$color)" : 'var(--border-subtle)';
 }
 
@@ -275,11 +298,13 @@ window.__flashMessage = {
             <?php echo vp_csrfField(); ?>
 
             <?php foreach ($settingGroups as $groupKey => $group): ?>
-            <div class="card card--accent-emerald">
+            <div class="card card--accent-<?php echo htmlspecialchars($group['color']); ?>">
                 <h2 class="settings-section-title">
                     <span class="icon-badge icon-badge--<?php echo $group['color']; ?>">
                         <?php if ($group['icon'] === 'shield'): ?>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                        <?php else: ?>
+                            <?php echo renderToggleIcon($group['icon']); ?>
                         <?php endif; ?>
                     </span>
                     <?php echo htmlspecialchars($group['title']); ?>

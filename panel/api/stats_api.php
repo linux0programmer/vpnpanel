@@ -298,6 +298,8 @@ function getVpnHistory() {
             'isp_down'   => ['icon' => '🌐', 'badge' => 'Интернет',       'color' => 'purple'],
             'isp_ok'     => ['icon' => '🌐', 'badge' => 'Интернет',       'color' => 'green'],
             'wan_switch' => ['icon' => '🔀', 'badge' => 'Канал',          'color' => 'orange'],
+            'wan_added'  => ['icon' => '🔌', 'badge' => 'Канал',          'color' => 'blue'],
+            'wan_removed'=> ['icon' => '🔌', 'badge' => 'Канал',          'color' => 'slate'],
             'update_ok'  => ['icon' => '⬆️',  'badge' => 'Обновление',     'color' => 'blue'],
             'update_bad' => ['icon' => '↩️',  'badge' => 'Откат',          'color' => 'red'],
             'sys_reboot' => ['icon' => '🔄', 'badge' => 'Перезагрузка',   'color' => 'blue'],
@@ -409,7 +411,18 @@ function getVpnHistory() {
                 $kind = 'wan_switch';
                 $from = $f1 !== '' ? $f1 : 'неизвестно';
                 $to   = $f2 !== '' ? $f2 : 'неизвестно';
-                $text = "Переключение канала: $from → $to";
+                $how  = $f3 !== '' ? $f3 : 'автоматически';
+                $text = "Переключение канала: $from → $to ($how)";
+                break;
+
+            case 'wan_added':
+                $kind = 'wan_added';
+                $text = "Добавлен канал в интернет: $f1" . ($f2 !== '' ? " — $f2" : '');
+                break;
+
+            case 'wan_removed':
+                $kind = 'wan_removed';
+                $text = "Убран канал в интернет: $f1" . ($f2 !== '' ? ". Осталось: $f2" : '');
                 break;
 
             case 'isp_down':

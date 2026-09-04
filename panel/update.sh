@@ -129,6 +129,22 @@ for f in /var/www/vpn-state /var/www/settings; do
     fi
 done
 
+if [ -f /var/www/settings ]; then
+    settings_added=""
+    for pair in "vpnchecker=true" "autoupvpn=true" "failover=true" "failover_first=false" \
+                "wan_failover=true" "wan_return=true"; do
+        key=${pair%%=*}
+        if ! grep -q "^$key=" /var/www/settings 2>/dev/null; then
+            echo "$pair" >> /var/www/settings
+            settings_added="${settings_added:+$settings_added }$key"
+        fi
+    done
+    if [ -n "$settings_added" ]; then
+        chmod 666 /var/www/settings 2>/dev/null || true
+        log_info "В /var/www/settings добавлены недостающие ключи: $settings_added"
+    fi
+fi
+
 vpn_panel_conf_recreate=0
 if [ ! -f /etc/vpn-panel.conf ]; then
     vpn_panel_conf_recreate=1

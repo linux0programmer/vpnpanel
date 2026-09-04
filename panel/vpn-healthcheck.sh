@@ -124,6 +124,13 @@ check_settings()         { [ -f "$SETTINGS" ] && grep -q "^vpnchecker=true$" "$S
 check_autoup()           { [ -f "$SETTINGS" ] && grep -q "^autoupvpn=true$" "$SETTINGS"; }
 check_failover_enabled() { [ -f "$SETTINGS" ] && grep -q "^failover=true$" "$SETTINGS"; }
 check_failover_first()   { [ -f "$SETTINGS" ] && grep -q "^failover_first=true$" "$SETTINGS"; }
+setting_on() {
+    [ -f "$SETTINGS" ] || return 0
+    grep -q "^$1=" "$SETTINGS" || return 0
+    grep -q "^$1=true$" "$SETTINGS"
+}
+check_wan_failover()     { setting_on wan_failover; }
+check_wan_return()       { setting_on wan_return; }
 check_iface()            { ip link show "$INTERFACE" &>/dev/null; }
 check_ip()               { ip -4 addr show "$INTERFACE" 2>/dev/null | grep -q "inet "; }
 check_wan_has_ip()       { [ -z "$WAN_IF" ] && return 0; ip -4 addr show "$WAN_IF" 2>/dev/null | grep -q "inet "; }
@@ -440,7 +447,7 @@ switch_wan_to() {
     routing_available || return 1
     [ -z "$target" ] && return 1
     [ "$target" = "$previous" ] && return 1
-    "$ROUTING_BIN" set-active "$target" --force >/dev/null 2>&1 || return 1
+    VP_EVENT_SOURCE=daemon "$ROUTING_BIN" set-active "$target" --force >/dev/null 2>&1 || return 1
     WAN_IF="$target"
     if ! repin_endpoint; then
         log "WARN" "маршрут до VPN-эндпоинта не перепривязан — туннель может не подняться на новом канале"
@@ -451,6 +458,7 @@ switch_wan_to() {
 }
 
 try_wan_failover() {
+    check_wan_failover || return 1
     routing_available || return 1
     [ "$(wan_count)" -lt 2 ] && return 1
     local target
@@ -460,6 +468,8 @@ try_wan_failover() {
 }
 
 try_return_to_primary() {
+    check_wan_failover || return 1
+    check_wan_return || return 1
     routing_available || return 1
     [ "$(wan_count)" -lt 2 ] && return 1
 

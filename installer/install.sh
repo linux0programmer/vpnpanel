@@ -1183,7 +1183,7 @@ EOF
 configure_settings() {
     log_step "Создание настроек..."
     mkdir -p /var/www
-    echo -e "vpnchecker=true\nautoupvpn=true\nfailover=true\nfailover_first=false" > "$SETTINGS_FILE"
+    echo -e "vpnchecker=true\nautoupvpn=true\nfailover=true\nfailover_first=false\nwan_failover=true\nwan_return=true" > "$SETTINGS_FILE"
     chmod 666 "$SETTINGS_FILE"
     echo -e "STATE=stopped\nACTIVE_ID=\nPRIMARY_ID=\nACTIVATED_BY=" > /var/www/vpn-state
     chmod 666 /var/www/vpn-state
