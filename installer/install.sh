@@ -708,6 +708,17 @@ apache_installed() {
     dpkg-query -W -f='${Status}' apache2 2>/dev/null | grep -q "install ok installed"
 }
 
+php_module_installed() {
+    local pkg
+    pkg=$(php_module_pkg)
+    [ -z "$pkg" ] && return 0
+    dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"
+}
+
+web_stack_ready() {
+    apache_installed && php_module_installed
+}
+
 apache_present() {
     dpkg-query -W -f='${Status}' apache2 2>/dev/null | grep -qE "^install "
 }
@@ -781,9 +792,13 @@ restore_apache_conffiles() {
 }
 
 repair_apache_mpm() {
-    apache_installed && return 0
+    web_stack_ready && return 0
 
-    log_warn "apache2 не настроился — привожу его конфигурацию в порядок"
+    if apache_installed; then
+        log_warn "apache2 настроен, а $(php_module_pkg) — нет: разбираю конфигурацию модулей"
+    else
+        log_warn "apache2 не настроился — привожу его конфигурацию в порядок"
+    fi
 
     mkdir -p "$WEB_DIR"
     mkdir -p /etc/apache2/mods-enabled
@@ -799,20 +814,27 @@ repair_apache_mpm() {
         log_warn "mods-available/mpm_event.load так и не появился"
     fi
 
-    if apache_installed; then
-        log_info "apache2 настроился при восстановлении conffiles"
+    if web_stack_ready; then
+        log_info "apache2 и php-модуль настроились при восстановлении conffiles"
         return 0
     fi
 
     rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf
+
+    if [ -n "$(php_module_pkg)" ]; then
+        a2enmod mpm_prefork >/dev/null 2>&1 || true
+    else
+        a2enmod mpm_event >/dev/null 2>&1 || true
+    fi
+
     timeout 300 dpkg --configure -a </dev/null || true
 
-    if apache_installed; then
-        log_info "apache2 настроен"
+    if web_stack_ready; then
+        log_info "apache2 и php-модуль настроены"
         return 0
     fi
 
-    log_warn "Не помогло — apache2 остаётся ненастроенным"
+    log_warn "Не помогло — веб-стек остаётся ненастроенным"
     return 1
 }
 
@@ -880,7 +902,7 @@ install_packages() {
         log_warn "Первая попытка не удалась, пробуем восстановиться..."
         timeout 300 dpkg --configure -a --force-confdef --force-confold </dev/null || true
         apt_run 600 -f install -y || true
-        apache_installed || repair_apache_mpm || true
+        web_stack_ready || repair_apache_mpm || true
         apt-get clean
         apt_run 300 update -qq || true
         apt_run 1800 install "${apt_opts[@]}" "${PACKAGES_TO_INSTALL[@]}" || true
@@ -896,7 +918,11 @@ install_packages() {
 
     if [ ${#missing[@]} -gt 0 ]; then
         local why
-        why=$(timeout 300 apt-get install -y "${missing[@]}" </dev/null 2>&1 | grep -vE '^(Reading|Building|Selecting|Preparing|Unpacking|Setting up|Processing) ' | tail -20)
+        local apt_out
+        apt_out=$(timeout 300 apt-get install -y "${missing[@]}" </dev/null 2>&1 | \
+            grep -vE '^(Reading|Building|Selecting|Preparing|Unpacking|Setting up|Processing|Get:|Fetched|No apport) ')
+        why=$(printf '%s\n' "$apt_out" | grep -nE 'ERROR|error|E:|Errors were|not configured|dependency problems' | head -12)
+        [ -z "$why" ] && why=$(printf '%s\n' "$apt_out" | tail -20)
         {
             echo ""
             echo -e "${RED}[✗] Не удалось поставить: ${missing[*]}${NC}"
