@@ -1,6 +1,5 @@
 #!/bin/bash
 
-SCRIPT_VERSION=1
 VERSION_FILE="/var/www/version"
 SETTINGS_FILE="/var/www/settings"
 WEB_DIR="/var/www/html"
@@ -40,6 +39,7 @@ STEP_LOG=()
 INPUT_INTERFACE=""
 WAN_INTERFACES=""
 INSTALL_SOURCE=""
+INSTALL_RELEASE=""
 SSH_IFACE=""
 PANEL_SRC=""
 SRC_DIR="/opt/vpn-panel/src"
@@ -59,7 +59,7 @@ chmod 644 "$LOG_FILE" 2>/dev/null
 {
     echo ""
     echo "════════════════════════════════════════════"
-    echo "VPN Panel Installer v$SCRIPT_VERSION"
+    echo "VPN Panel Installer"
     echo "Запущено: $(date '+%Y-%m-%d %H:%M:%S')"
     echo "PID: $MAIN_PID"
     echo "════════════════════════════════════════════"
@@ -110,7 +110,7 @@ show_banner() {
     clear >&3
     {
         echo ""
-        echo -e "  ${WHITE}VPN SERVER INSTALLER${NC}  ${CYAN}v${SCRIPT_VERSION}${NC}"
+        echo -e "  ${WHITE}VPN SERVER INSTALLER${NC}"
         echo -e "  ${CYAN}────────────────────────────────────────${NC}"
         echo ""
     } >&3
@@ -920,7 +920,7 @@ configure_dhcp() {
     [ -f /etc/dnsmasq.conf ] && cp /etc/dnsmasq.conf /etc/dnsmasq.conf.original.backup
 
     cat > /etc/dnsmasq.conf << EOF
-# VPN Panel DHCP v$SCRIPT_VERSION
+# VPN Panel DHCP
 dhcp-authoritative
 domain=vpn-panel.lan
 interface=$OUTPUT_INTERFACE
@@ -1083,6 +1083,18 @@ configure_vpn() {
     log_info "VPN настроен (WireGuard + OpenVPN)"
 }
 
+resolve_release() {
+    local src="$1" tag
+    tag=$(grep -m1 '^stable\.tag=' "$src/release.conf" 2>/dev/null | cut -d= -f2 | tr -d ' \r')
+    if [ -n "$tag" ] && git -C "$src" rev-parse --verify --quiet "$tag^{commit}" >/dev/null 2>&1; then
+        printf '%s' "$tag"
+        return 0
+    fi
+    tag=$(git -C "$src" tag --list 'v[0-9]*' --sort=-v:refname 2>/dev/null | head -1)
+    [ -n "$tag" ] && { printf '%s' "$tag"; return 0; }
+    return 1
+}
+
 panel_source_local() {
     local self here candidate
     self="${BASH_SOURCE[0]}"
@@ -1132,6 +1144,18 @@ fetch_sources() {
     [ -d "$SRC_DIR" ] && rm -rf "$SRC_DIR"
     log_info "Клонирую $GIT_REPO -> $SRC_DIR"
     git clone --quiet "$GIT_REPO" "$SRC_DIR" || error_exit "Ошибка git clone $GIT_REPO"
+
+    INSTALL_RELEASE=$(resolve_release "$SRC_DIR") || INSTALL_RELEASE=""
+    if [ -n "$INSTALL_RELEASE" ]; then
+        if git -C "$SRC_DIR" checkout --quiet --detach "$INSTALL_RELEASE" 2>/dev/null; then
+            log_info "Ставлю выпуск $INSTALL_RELEASE"
+        else
+            log_warn "Не удалось переключиться на $INSTALL_RELEASE — ставлю ветку по умолчанию"
+            INSTALL_RELEASE=""
+        fi
+    else
+        log_warn "В репозитории нет выпусков — ставлю ветку по умолчанию"
+    fi
 
     PANEL_SRC="$SRC_DIR"
     [ -f "$SRC_DIR/panel/cabinet.php" ] && PANEL_SRC="$SRC_DIR/panel"
@@ -1389,10 +1413,20 @@ finalize() {
         CONF_REPO_URL="$GIT_REPO"
     fi
 
-    echo "$SCRIPT_VERSION" > "$VERSION_FILE"
+    mkdir -p /var/lib/vpn-panel
+    if [ -n "$INSTALL_RELEASE" ]; then
+        local rel_sha rel_num
+        rel_sha=$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null)
+        printf '%s %s\n' "$INSTALL_RELEASE" "${rel_sha:-unknown}" > /var/lib/vpn-panel/deployed
+        rel_num=${INSTALL_RELEASE#v}
+        case "$rel_num" in ''|*[!0-9]*) rel_num=0 ;; esac
+        printf '%s' "$rel_num" > "$VERSION_FILE"
+    else
+        rm -f /var/lib/vpn-panel/deployed
+        printf '0' > "$VERSION_FILE"
+    fi
 
     cat > /etc/vpn-panel.conf << EOF
-VERSION=$SCRIPT_VERSION
 REPO_URL=$CONF_REPO_URL
 CHANNEL=stable
 DATE=$(date '+%Y-%m-%d %H:%M:%S')
@@ -1412,7 +1446,7 @@ EOF
         /usr/local/sbin/vpn-panel-routing apply >/dev/null 2>&1             && log_info "Правила маршрутизации применены"             || log_warn "Не удалось применить правила маршрутизации (проверьте vpn-panel-routing status)"
     fi
 
-    log_info "Версия $SCRIPT_VERSION сохранена"
+    log_info "${INSTALL_RELEASE:+Выпуск $INSTALL_RELEASE сохранён}${INSTALL_RELEASE:-Выпуск не определён — первое обновление подтянет релиз}"
 }
 
 verify_services() {
@@ -1459,7 +1493,7 @@ verify_services() {
 
 full_install() {
     echo "" >&3
-    echo -e "${GREEN}═══ УСТАНОВКА VPN PANEL v${SCRIPT_VERSION} ═══${NC}" >&3
+    echo -e "${GREEN}═══ УСТАНОВКА ═══${NC}" >&3
     echo "" >&3
 
     local steps=(
@@ -1546,6 +1580,7 @@ do_remove() {
         find /var/log/vpn-panel -mindepth 1 ! -name 'install.log' -exec rm -rf {} + 2>/dev/null || true
     fi
     rm -f "$VERSION_FILE" "$SETTINGS_FILE" /etc/vpn-panel.conf
+    rm -f /var/lib/vpn-panel/deployed
     rm -f /etc/sudoers.d/vpn-panel-www-data
     rm -f /usr/local/bin/vpn-healthcheck.sh /usr/local/bin/run-update.sh /usr/local/bin/vpn-panel-update.sh
     systemctl stop vpn-panel-routing.service 2>/dev/null || true
@@ -1682,10 +1717,11 @@ main_menu() {
     if $installed; then
         local rel=""
         [ -f /var/lib/vpn-panel/deployed ] && rel=$(awk '{print $1}' /var/lib/vpn-panel/deployed 2>/dev/null)
+        [ -z "$rel" ] && [ "$ver" != "0" ] && rel="v$ver"
         if [ -n "$rel" ]; then
-            echo -e "    ${WHITE}Статус:${NC} ${GREEN}● УСТАНОВЛЕН${NC}  выпуск ${WHITE}${rel}${NC}, схема ${WHITE}v${ver}${NC}" >&3
+            echo -e "    ${WHITE}Статус:${NC} ${GREEN}● УСТАНОВЛЕН${NC}  выпуск ${WHITE}${rel}${NC}" >&3
         else
-            echo -e "    ${WHITE}Статус:${NC} ${GREEN}● УСТАНОВЛЕН${NC}  схема ${WHITE}v${ver}${NC}" >&3
+            echo -e "    ${WHITE}Статус:${NC} ${GREEN}● УСТАНОВЛЕН${NC}" >&3
         fi
         ip link show tun0 &>/dev/null && echo -e "    ${WHITE}VPN:${NC}    ${GREEN}● Активен${NC}" >&3
     else

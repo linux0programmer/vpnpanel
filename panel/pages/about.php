@@ -1,11 +1,19 @@
 <?php
 
-$version_file = '/var/www/version';
-$product_version = 'N/A';
+$deployed_file = '/var/lib/vpn-panel/deployed';
+$version_file  = '/var/www/version';
+$product_version = 'не определён';
 
-if (file_exists($version_file) && is_readable($version_file)) {
-    $raw = trim(file_get_contents($version_file));
-    if ($raw !== '' && preg_match('/^\d+$/', $raw)) {
+if (file_exists($deployed_file) && is_readable($deployed_file)) {
+    $raw = trim((string)file_get_contents($deployed_file));
+    if ($raw !== '' && preg_match('/^(v\d+)/', $raw, $m)) {
+        $product_version = $m[1];
+    }
+}
+
+if ($product_version === 'не определён' && file_exists($version_file) && is_readable($version_file)) {
+    $raw = trim((string)file_get_contents($version_file));
+    if ($raw !== '' && $raw !== '0' && preg_match('/^\d+$/', $raw)) {
         $product_version = 'v' . $raw;
     }
 }

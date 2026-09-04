@@ -16,7 +16,8 @@ MAX_JITTER=600
 MANIFEST_FILE="release.conf"
 MANIFEST_BRANCH="main"
 
-RSYNC_EXCLUDES=(--exclude '.git' --exclude '.gitignore' --exclude '.github')
+RSYNC_EXCLUDES=(--exclude '.git' --exclude '.gitignore' --exclude '.github'
+                --exclude '.release' --exclude '.state')
 
 log() {
     local level="$1" msg="$2" line
@@ -76,9 +77,30 @@ find_diagnostic() {
     return 1
 }
 
-installed_version() {
+VERSION_FILE="/var/www/version"
+
+STATE_FILES="
+/etc/vpn-panel.conf
+/var/www/settings
+/etc/netplan/99-vpn-panel.yaml
+/etc/sudoers.d/vpn-panel-www-data
+/etc/systemd/system/vpn-healthcheck.service
+/etc/systemd/system/vpn-panel-routing.service
+/etc/dnsmasq.conf
+/etc/iptables/rules.v4
+"
+
+ref_number() {
+    local n="${1#v}"
+    case "$n" in
+        ''|*[!0-9]*) printf '' ;;
+        *)           printf '%s' "$n" ;;
+    esac
+}
+
+installed_release() {
     local v
-    v=$(cat /var/www/version 2>/dev/null)
+    v=$(cat "$VERSION_FILE" 2>/dev/null)
     case "$v" in
         ''|*[!0-9]*) printf '0' ;;
         *)           printf '%s' "$v" ;;
@@ -251,6 +273,65 @@ verify_ref() {
     return 1
 }
 
+state_slot() { printf '%s' "$1" | tr '/' '_'; }
+
+save_state_files() {
+    local dest="$1" f
+    mkdir -p "$dest" || return 1
+    for f in $STATE_FILES; do
+        [ -f "$f" ] || continue
+        cp -a "$f" "$dest/$(state_slot "$f")" 2>/dev/null || return 1
+    done
+    return 0
+}
+
+restore_state_files() {
+    local src="$1" f slot restored="" netplan_changed=0
+    [ -d "$src" ] || { log WARN "в снимке нет настроек сервера — восстановлен только код"; return 0; }
+
+    for f in $STATE_FILES; do
+        slot="$src/$(state_slot "$f")"
+        [ -f "$slot" ] || continue
+        cmp -s "$slot" "$f" 2>/dev/null && continue
+
+        case "$f" in
+            /etc/sudoers.d/*)
+                if ! visudo -c -f "$slot" >/dev/null 2>&1; then
+                    log WARN "sudoers из снимка не проходит visudo — оставлен текущий"
+                    continue
+                fi ;;
+        esac
+
+        cp -a "$slot" "$f" 2>/dev/null || { log WARN "не удалось вернуть $f"; continue; }
+        restored="${restored:+$restored }$f"
+        case "$f" in /etc/netplan/*) netplan_changed=1 ;; esac
+    done
+
+    if [ -z "$restored" ]; then
+        log INFO "настройки сервера в снимке совпадают с текущими"
+        return 0
+    fi
+    log INFO "возвращены настройки сервера: $restored"
+
+    chmod 440 /etc/sudoers.d/vpn-panel-www-data 2>/dev/null || true
+    chmod 660 /etc/netplan/99-vpn-panel.yaml 2>/dev/null || true
+    chmod 666 /var/www/settings 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+
+    if [ -s /etc/iptables/rules.v4 ]; then
+        iptables-restore < /etc/iptables/rules.v4 2>/dev/null && \
+            log INFO "правила iptables восстановлены из снимка"
+    fi
+    if [ "$netplan_changed" = "1" ]; then
+        if netplan apply 2>/dev/null; then
+            log INFO "netplan применён из снимка"
+        else
+            log WARN "netplan apply после отката не отработал"
+        fi
+    fi
+    return 0
+}
+
 snapshot_now() {
     local name="$1" dir staging
     dir="$SNAPSHOTS/$name"
@@ -258,7 +339,8 @@ snapshot_now() {
     rm -rf "$staging"
     mkdir -p "$staging" || return 1
     rsync -a --delete "${RSYNC_EXCLUDES[@]}" "$WEB_DIR"/ "$staging"/ 2>/dev/null || { rm -rf "$staging"; return 1; }
-    printf '%s' "$(installed_version)" > "$staging/.version" || { rm -rf "$staging"; return 1; }
+    printf '%s' "$(installed_release)" > "$staging/.release" || { rm -rf "$staging"; return 1; }
+    save_state_files "$staging/.state" || { rm -rf "$staging"; return 1; }
     rm -rf "$dir"
     mv "$staging" "$dir" || return 1
     printf '%s' "$dir"
@@ -268,7 +350,7 @@ valid_snapshots() {
     local dir
     for dir in $(ls -1dt "$SNAPSHOTS"/*/ 2>/dev/null); do
         case "$dir" in *.partial/) continue ;; esac
-        [ -f "${dir%/}/.version" ] || continue
+        [ -f "${dir%/}/.release" ] || [ -f "${dir%/}/.version" ] || continue
         printf '%s\n' "${dir%/}"
     done
 }
@@ -356,9 +438,11 @@ restore_snapshot() {
     [ -d "$dir" ] || { log ERROR "снимок не найден: $dir"; return 1; }
     log WARN "откат на снимок $(basename "$dir")"
     sync_to_web "$dir" || return 1
-    local ver
-    ver=$(cat "$dir/.version" 2>/dev/null)
-    [ -n "$ver" ] && printf '%s' "$ver" > /var/www/version
+    restore_state_files "$dir/.state"
+    local rel
+    rel=$(cat "$dir/.release" 2>/dev/null)
+    [ -z "$rel" ] && rel=$(cat "$dir/.version" 2>/dev/null)
+    [ -n "$rel" ] && printf '%s' "$rel" > "$VERSION_FILE"
     run_migrations "$(deployed_ref | awk '{print $1}')" || log WARN "миграции при откате завершились с ошибкой"
     systemctl restart vpn-healthcheck.service 2>/dev/null || true
     systemctl restart apache2 2>/dev/null || true
@@ -404,24 +488,8 @@ report_unreleased() {
     return 0
 }
 
-code_version() {
-    grep -m1 '^SCRIPT_VERSION=' "$WEB_DIR/update.sh" 2>/dev/null | cut -d= -f2
-}
-
-clamp_version_to_code() {
-    local code_ver current_ver
-    code_ver=$(code_version)
-    current_ver=$(installed_version)
-    [ -z "$code_ver" ] && return 0
-    if [ "$current_ver" -gt "$code_ver" ] 2>/dev/null; then
-        log WARN "откат схемы: /var/www/version $current_ver -> $code_ver (по коду развёрнутого релиза)"
-        printf '%s' "$code_ver" > /var/www/version
-    fi
-    return 0
-}
-
 deploy() {
-    local requested="$1" ref current snapshot stamp channel is_rollback
+    local requested="$1" ref current snapshot stamp
 
     if [ -s "$PENDING_FILE" ]; then
         log WARN "предыдущий деплой ($(cat "$PENDING_FILE")) не завершился — восстанавливаю последний снимок"
@@ -473,7 +541,7 @@ deploy() {
     log INFO "деплой $ref ($target_sha), сейчас: ${current:-неизвестно}"
     log_event update_started "$ref" "$target_sha"
 
-    stamp="$(date '+%Y%m%d-%H%M%S')-v$(installed_version)"
+    stamp="$(date '+%Y%m%d-%H%M%S')-v$(installed_release)"
     snapshot=$(snapshot_now "$stamp") || { log ERROR "не удалось сделать снимок — деплой отменён"; return 1; }
     log INFO "снимок текущей версии: $snapshot"
 
@@ -481,9 +549,6 @@ deploy() {
         log ERROR "checkout $ref не удался"
         return 1
     }
-
-    channel=$(channel_name)
-    is_rollback=$(manifest_get "$channel.rollback")
 
     printf '%s %s\n' "$ref" "$target_sha" > "$PENDING_FILE"
 
@@ -495,8 +560,6 @@ deploy() {
         prune_snapshots
         return 1
     fi
-
-    [ "$is_rollback" = "1" ] && clamp_version_to_code
 
     if ! run_migrations "$ref"; then
         restore_snapshot "$snapshot" || log ERROR "ОТКАТ НЕ УДАЛСЯ — панель в несогласованном состоянии"
@@ -518,9 +581,12 @@ deploy() {
 
     mkdir -p "$STATE_DIR"
     printf '%s %s\n' "$ref" "$target_sha" > "$DEPLOYED_FILE"
+    local ref_num
+    ref_num=$(ref_number "$ref")
+    [ -n "$ref_num" ] && printf '%s' "$ref_num" > "$VERSION_FILE"
     rm -f "$PENDING_FILE"
     prune_snapshots
-    log INFO "деплой завершён: выпуск $ref ($target_sha), схема v$(installed_version)"
+    log INFO "деплой завершён: выпуск $ref ($target_sha)"
     log_event update_ok "$ref" "$target_sha"
     return 0
 }
@@ -555,7 +621,8 @@ list_snapshots() {
         return 0
     fi
     for dir in $(valid_snapshots); do
-        printf '%s\tсхема v%s\n' "$(basename "$dir")" "$(cat "$dir/.version" 2>/dev/null || printf '?')"
+        printf '%s\tвыпуск v%s\n' "$(basename "$dir")" \
+            "$(cat "$dir/.release" 2>/dev/null || cat "$dir/.version" 2>/dev/null || printf '?')"
     done
 }
 
@@ -566,7 +633,7 @@ check() {
     printf 'закреплён:    %s\n' "$(or_default "$(conf_get PINNED_TAG)" 'нет')"
     printf 'репозиторий:  %s\n' "$(or_default "$(repo_url)" 'не задан')"
     printf 'развёрнуто:   %s\n' "$(or_default "$(deployed_ref)" 'неизвестно')"
-    printf 'версия схемы: %s\n' "$(or_default "$(installed_version)" 'неизвестна')"
+    printf 'номер выпуска: %s\n' "$(or_default "$(installed_release)" 'неизвестен')"
     printf 'доступно:     %s\n' "$(or_default "$(target_ref 2>/dev/null)" 'не определено')"
     printf 'снимков:      %s\n' "$(ls -1d "$SNAPSHOTS"/*/ 2>/dev/null | wc -l)"
 

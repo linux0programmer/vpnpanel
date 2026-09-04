@@ -92,17 +92,21 @@ fi
 uptime_str=$(uptime -p 2>/dev/null | sed 's/up //')
 [ -n "$uptime_str" ] && info "Uptime: $uptime_str"
 
-if [ -f /var/www/version ]; then
-    vp_version=$(cat /var/www/version 2>/dev/null)
-    expected_version=$(grep -m1 "^SCRIPT_VERSION=" /var/www/html/update.sh 2>/dev/null | cut -d= -f2)
-[ -z "$expected_version" ] && expected_version="$vp_version"
-if [ "$vp_version" = "$expected_version" ]; then
-        pass "Версия VPN Panel: v$vp_version"
-    else
-        warn "Версия VPN Panel: v$vp_version (код ожидает v$expected_version)"
-    fi
+vp_release=""
+[ -f /var/lib/vpn-panel/deployed ] && vp_release=$(awk '{print $1}' /var/lib/vpn-panel/deployed 2>/dev/null)
+vp_release_num=$(cat /var/www/version 2>/dev/null)
+
+if [ -n "$vp_release" ]; then
+    pass "Выпуск панели: $vp_release"
+    case "$vp_release_num" in
+        ''|*[!0-9]*) warn "/var/www/version не содержит номер выпуска" ;;
+        *) [ "v$vp_release_num" = "$vp_release" ] || \
+               warn "/var/www/version = $vp_release_num, а развёрнут $vp_release" ;;
+    esac
+elif [ -n "$vp_release_num" ] && [ "$vp_release_num" != "0" ]; then
+    pass "Выпуск панели: v$vp_release_num"
 else
-    fail "/var/www/version отсутствует"
+    warn "Выпуск не определён — первое обновление подтянет релиз из release.conf"
 fi
 
 if command -v df >/dev/null 2>&1; then

@@ -1,6 +1,5 @@
 #!/bin/bash
 
-SCRIPT_VERSION=1
 MIGRATION_FAILED=0
 VERSION_FILE="/var/www/version"
 SETTINGS_FILE="/var/www/settings"
@@ -21,7 +20,7 @@ UPDATE_PID=$BASHPID
 {
     echo ""
     echo "============================================"
-    echo "Проверка конфигурации, схема миграций v$SCRIPT_VERSION"
+    echo "Миграции и проверка конфигурации"
     echo "Запущено: $(date '+%Y-%m-%d %H:%M:%S')"
     echo "PID: $UPDATE_PID"
     if [ "${AUTO_RUN:-0}" = "1" ]; then
@@ -87,30 +86,31 @@ detect_interfaces() {
 
 log_info "Код разворачивает vpn-panel-deploy — этот скрипт только применяет миграции"
 
-CURRENT_VERSION=0
+release_number() {
+    local n="${1#v}"
+    case "$n" in
+        ''|*[!0-9]*) printf '0' ;;
+        *)           printf '%s' "$n" ;;
+    esac
+}
+
+CURRENT_RELEASE=0
 if [ -f "$VERSION_FILE" ] && [ -s "$VERSION_FILE" ]; then
-    CURRENT_VERSION=$(cat "$VERSION_FILE")
+    CURRENT_RELEASE=$(release_number "$(cat "$VERSION_FILE")")
 fi
-case "$CURRENT_VERSION" in
-    ''|*[!0-9]*)
-        log_warn "В $VERSION_FILE мусор ('$CURRENT_VERSION') — считаю версию нулевой"
-        CURRENT_VERSION=0 ;;
-esac
 
 DEPLOYED_RELEASE="${VP_RELEASE:-}"
 if [ -z "$DEPLOYED_RELEASE" ] && [ -f /var/lib/vpn-panel/deployed ]; then
     DEPLOYED_RELEASE=$(awk '{print $1}' /var/lib/vpn-panel/deployed 2>/dev/null)
 fi
+TARGET_RELEASE=$(release_number "$DEPLOYED_RELEASE")
+[ "$TARGET_RELEASE" = "0" ] && TARGET_RELEASE="$CURRENT_RELEASE"
 
 echo "" >&3
-[ -n "$DEPLOYED_RELEASE" ] && log_step "Выпуск панели: $DEPLOYED_RELEASE"
-log_step "Схема миграций: текущая v$CURRENT_VERSION, целевая v$SCRIPT_VERSION"
-echo "" >&3
-
-if [ "$CURRENT_VERSION" -ge "$SCRIPT_VERSION" ]; then
-    log_info "Схема миграций актуальна (v$CURRENT_VERSION) — выполняю проверки конфигурации"
+if [ "$TARGET_RELEASE" -gt "$CURRENT_RELEASE" ] 2>/dev/null; then
+    log_step "Выпуск: v$CURRENT_RELEASE → v$TARGET_RELEASE"
 else
-    log_warn "Применяю обновление..."
+    log_step "Выпуск: v$CURRENT_RELEASE"
 fi
 echo "" >&3
 
@@ -198,7 +198,6 @@ if [ "$vpn_panel_conf_recreate" = "1" ]; then
     else
         log_warn "LAN не визначено — старе значення в /etc/vpn-panel.conf залишено без змін"
     fi
-    conf_put VERSION "$SCRIPT_VERSION"
     conf_put DATE "$(date '+%Y-%m-%d %H:%M:%S')"
     log_info "/etc/vpn-panel.conf оновлено (WAN=${DETECTED_WAN:-unknown}, LAN=${DETECTED_LAN:-unknown})"
     if systemctl is-active --quiet vpn-healthcheck.service 2>/dev/null; then
@@ -447,20 +446,12 @@ if [ -f "$SUDOERS_FILE" ]; then
     fi
 fi
 
-if [ "$MIGRATION_FAILED" = "1" ]; then
-    log_warn "Миграции завершились с ошибками — версия не поднята"
-else
-    echo "$SCRIPT_VERSION" > "$VERSION_FILE"
-fi
+[ "$MIGRATION_FAILED" = "1" ] && log_warn "Миграции завершились с ошибками — номер выпуска не поднят"
 
 {
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════╗${NC}"
-    if [ "$CURRENT_VERSION" -lt "$SCRIPT_VERSION" ] 2>/dev/null; then
-        echo -e "${GREEN}║   Схема миграций: v$CURRENT_VERSION → v$SCRIPT_VERSION                   ║${NC}"
-    else
-        echo -e "${GREEN}║      Конфигурация проверена, схема v$SCRIPT_VERSION      ║${NC}"
-    fi
+    echo -e "${GREEN}║        Конфигурация проверена            ║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
     echo ""
 } >&3
