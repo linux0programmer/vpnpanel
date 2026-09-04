@@ -680,7 +680,8 @@ $wanState = [
             <div class="wan-item-actions">
                 <?php if (!$row['active'] && $isUp): ?>
                 <form method="post" class="wan-inline-form"
-                      data-confirm="Пустить весь интернет через <?php echo htmlspecialchars($row['iface']); ?>?">
+                      data-confirm="Пустить весь интернет через <?php echo htmlspecialchars($row['iface']); ?>?"
+                      data-confirm-ok="Подключить" data-confirm-danger="0">
                     <input type="hidden" name="wan_action" value="activate">
                     <?php echo vp_csrfField(); ?>
                     <input type="hidden" name="wan_iface" value="<?php echo htmlspecialchars($row['iface']); ?>">
@@ -742,9 +743,9 @@ $wanState = [
             ask({
                 title:       'Подтвердите действие',
                 message:     form.dataset.confirm,
-                confirmText: 'Убрать',
+                confirmText: form.dataset.confirmOk || 'Убрать',
                 cancelText:  'Отмена',
-                danger:      true,
+                danger:      form.dataset.confirmDanger !== '0',
             }).then(function (ok) {
                 if (!ok) return;
                 form.dataset.confirmed = '1';
