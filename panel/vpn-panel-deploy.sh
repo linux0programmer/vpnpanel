@@ -17,7 +17,7 @@ MANIFEST_FILE="release.conf"
 MANIFEST_BRANCH="main"
 
 RSYNC_EXCLUDES=(--exclude '.git' --exclude '.gitignore' --exclude '.github'
-                --exclude '.release' --exclude '.state')
+                --exclude '.release' --exclude '.version' --exclude '.state')
 
 log() {
     local level="$1" msg="$2" line
@@ -340,6 +340,7 @@ snapshot_now() {
     mkdir -p "$staging" || return 1
     rsync -a --delete "${RSYNC_EXCLUDES[@]}" "$WEB_DIR"/ "$staging"/ 2>/dev/null || { rm -rf "$staging"; return 1; }
     printf '%s' "$(installed_release)" > "$staging/.release" || { rm -rf "$staging"; return 1; }
+    printf '%s' "$(installed_release)" > "$staging/.version" || { rm -rf "$staging"; return 1; }
     save_state_files "$staging/.state" || { rm -rf "$staging"; return 1; }
     rm -rf "$dir"
     mv "$staging" "$dir" || return 1
