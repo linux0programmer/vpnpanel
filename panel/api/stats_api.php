@@ -300,6 +300,7 @@ function getVpnHistory() {
             'wan_switch' => ['icon' => '🔀', 'badge' => 'Канал',          'color' => 'orange'],
             'wan_added'  => ['icon' => '🔌', 'badge' => 'Канал',          'color' => 'blue'],
             'wan_primary'=> ['icon' => '⭐', 'badge' => 'Канал',          'color' => 'green'],
+            'wan_order'  => ['icon' => '↕️', 'badge' => 'Канал',          'color' => 'slate'],
             'wan_removed'=> ['icon' => '🔌', 'badge' => 'Канал',          'color' => 'slate'],
             'update_ok'  => ['icon' => '⬆️',  'badge' => 'Обновление',     'color' => 'blue'],
             'update_bad' => ['icon' => '↩️',  'badge' => 'Откат',          'color' => 'red'],
@@ -414,6 +415,12 @@ function getVpnHistory() {
                 $to   = $f2 !== '' ? $f2 : 'неизвестно';
                 $how  = $f3 !== '' ? $f3 : 'автоматически';
                 $text = "Переключение канала: $from → $to ($how)";
+                break;
+
+            case 'wan_order':
+                $kind = 'wan_order';
+                $text = "Изменён приоритет каналов: $f1 " . ($f2 === 'up' ? 'выше' : 'ниже')
+                      . ($f3 !== '' ? ". Порядок: $f3" : '');
                 break;
 
             case 'wan_primary':

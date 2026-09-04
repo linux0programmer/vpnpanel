@@ -8,7 +8,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     exit();
 }
 
-$netsettingsAssetsVer = '5.7.0';
+$netsettingsAssetsVer = '5.8.0';
 
 $netplanDir   = '/etc/netplan/';
 $yamlFilePath = null;
@@ -207,12 +207,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['wan_action'])) {
             'activate' => ['set-active', "Активный канал: {$wanIface}"],
             'primary'  => ['set-primary', "Основной канал: {$wanIface}"],
         ];
+
+        if ($wanAction === 'move') {
+            $dir = ($_POST['wan_dir'] ?? '') === 'up' ? 'up' : 'down';
+            $verbs['move'] = ['move-wan ' . $safe . ' ' . escapeshellarg($dir), 'Порядок каналов изменён'];
+        }
         if (!isset($verbs[$wanAction])) {
             $flashMessage = 'Неизвестное действие';
             $flashType    = 'error';
         } else {
             [$sub, $okText] = $verbs[$wanAction];
-            $res  = vp_routingRun($sub . ' ' . $safe);
+            $res  = vp_routingRun($wanAction === 'move' ? $sub : $sub . ' ' . $safe);
             $note = trim($res['out']);
             if ($res['rc'] === 0) {
                 $flashMessage = $note !== '' ? $note : $okText;
@@ -539,7 +544,7 @@ $wanState = [
         <table class="table">
             <thead>
                 <tr>
-                    <th style="width:60px">Приор.</th>
+                    <th style="width:88px">Приор.</th>
                     <th>Интерфейс</th>
                     <th>Адрес</th>
                     <th>Шлюз</th>
@@ -552,7 +557,33 @@ $wanState = [
                     $view = $wanState[$row['state']] ?? ['pill' => 'warn', 'text' => $row['state']];
                 ?>
                 <tr>
-                    <td class="num"><?php echo $row['priority']; ?></td>
+                    <td class="num">
+                        <div class="net-prio">
+                            <span class="net-prio-num"><?php echo (int)$row['priority']; ?></span>
+                            <?php if (count($wanRows) > 1): ?>
+                            <div class="net-prio-arrows">
+                                <form method="post">
+                                    <input type="hidden" name="wan_action" value="move">
+                                    <input type="hidden" name="wan_dir" value="up">
+                                    <?php echo vp_csrfField(); ?>
+                                    <input type="hidden" name="wan_iface" value="<?php echo htmlspecialchars($row['iface']); ?>">
+                                    <button type="submit" class="btn btn--ghost net-prio-btn"
+                                            title="Поднять приоритет"
+                                            <?php echo $row['priority'] === 1 ? 'disabled' : ''; ?>><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg></button>
+                                </form>
+                                <form method="post">
+                                    <input type="hidden" name="wan_action" value="move">
+                                    <input type="hidden" name="wan_dir" value="down">
+                                    <?php echo vp_csrfField(); ?>
+                                    <input type="hidden" name="wan_iface" value="<?php echo htmlspecialchars($row['iface']); ?>">
+                                    <button type="submit" class="btn btn--ghost net-prio-btn"
+                                            title="Опустить приоритет"
+                                            <?php echo $row['priority'] === count($wanRows) ? 'disabled' : ''; ?>><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></button>
+                                </form>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    </td>
                     <td class="mono">
                         <?php echo htmlspecialchars($row['iface']); ?>
                         <?php if ($row['priority'] === 1): ?>
@@ -572,15 +603,7 @@ $wanState = [
                                 <input type="hidden" name="wan_action" value="activate">
                                 <?php echo vp_csrfField(); ?>
                                 <input type="hidden" name="wan_iface" value="<?php echo htmlspecialchars($row['iface']); ?>">
-                                <button type="submit" class="btn btn--secondary btn--sm">Сделать активным</button>
-                            </form>
-                            <?php endif; ?>
-                            <?php if ($row['priority'] !== 1): ?>
-                            <form method="post" class="wan-inline-form">
-                                <input type="hidden" name="wan_action" value="primary">
-                                <?php echo vp_csrfField(); ?>
-                                <input type="hidden" name="wan_iface" value="<?php echo htmlspecialchars($row['iface']); ?>">
-                                <button type="submit" class="btn btn--ghost btn--sm">Сделать основным</button>
+                                <button type="submit" class="btn btn--secondary btn--sm">Активировать</button>
                             </form>
                             <?php endif; ?>
                             <a class="btn btn--ghost btn--sm"

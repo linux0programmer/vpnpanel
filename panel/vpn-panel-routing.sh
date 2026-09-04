@@ -331,6 +331,58 @@ add_wan() {
     printf 'добавлен канал %s (приоритет %s): %s\n' "$iface" "$(iface_index "$iface")" "$note"
 }
 
+move_wan() {
+    local iface="$1" dir="$2" list w n i pos swap out
+    [ -z "$iface" ] && return 1
+    case "$dir" in
+        up|down) ;;
+        *) printf 'направление: up или down\n' >&2; return 1 ;;
+    esac
+
+    list=$(wan_list)
+    printf '%s\n' $list | grep -qx "$iface" || { printf 'канала нет в списке: %s\n' "$iface" >&2; return 1; }
+
+    set -- $list
+    n=$#
+    pos=0
+    i=0
+    for w in "$@"; do
+        i=$((i + 1))
+        [ "$w" = "$iface" ] && pos=$i
+    done
+    [ "$pos" -eq 0 ] && return 1
+
+    if [ "$dir" = "up" ]; then
+        [ "$pos" -eq 1 ] && { printf 'канал %s уже первый\n' "$iface"; return 0; }
+        swap=$((pos - 1))
+    else
+        [ "$pos" -eq "$n" ] && { printf 'канал %s уже последний\n' "$iface"; return 0; }
+        swap=$((pos + 1))
+    fi
+
+    out=""
+    i=0
+    for w in "$@"; do
+        i=$((i + 1))
+        [ "$i" -eq "$pos" ] && continue
+        if [ "$i" -eq "$swap" ]; then
+            if [ "$dir" = "up" ]; then
+                out="${out:+$out }$iface $w"
+            else
+                out="${out:+$out }$w $iface"
+            fi
+            continue
+        fi
+        out="${out:+$out }$w"
+    done
+
+    drop_rules
+    conf_set WAN_LIST "$out"
+    apply_rules
+    log_event wan_order "$iface" "$dir" "$out"
+    printf 'порядок каналов: %s\n' "$out"
+}
+
 set_primary() {
     local iface="$1" list out w first
     [ -z "$iface" ] && return 1
@@ -445,6 +497,7 @@ vpn-panel-routing <команда>
   add-wan <iface>       добавить канал в конец списка приоритетов
   remove-wan <iface>    убрать канал из списка
   set-primary <iface>   сделать канал основным (первым в списке приоритетов)
+  move-wan <iface> up|down  поменять канал местами с соседним по приоритету
   free                  сетевые карты, не занятые под WAN или LAN
 EOF
 }
@@ -462,6 +515,7 @@ case "${1:-}" in
     add-wan)    add_wan "$2" ;;
     remove-wan) remove_wan "$2" ;;
     set-primary) set_primary "$2" ;;
+    move-wan)   move_wan "$2" "$3" ;;
     free)       free_ifaces ;;
     *)          usage; exit 1 ;;
 esac

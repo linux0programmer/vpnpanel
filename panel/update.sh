@@ -395,6 +395,7 @@ SUDOERS_REQUIRED="
 /usr/local/sbin/vpn-panel-routing apply
 /usr/local/sbin/vpn-panel-routing set-active *
 /usr/local/sbin/vpn-panel-routing set-primary *
+/usr/local/sbin/vpn-panel-routing move-wan *
 /usr/local/sbin/vpn-panel-routing add-wan *
 /usr/local/sbin/vpn-panel-routing remove-wan *
 /usr/sbin/netplan apply
