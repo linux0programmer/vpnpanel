@@ -297,9 +297,10 @@ sync_to_web() {
 }
 
 run_migrations() {
+    local release="${1:-}"
     [ -f "$WEB_DIR/update.sh" ] || { log WARN "update.sh отсутствует — миграции пропущены"; return 0; }
     chmod +x "$WEB_DIR/update.sh"
-    ( cd "$WEB_DIR" && AUTO_RUN=1 ./update.sh >> "$LOG" 2>&1 )
+    ( cd "$WEB_DIR" && AUTO_RUN=1 VP_RELEASE="$release" ./update.sh >> "$LOG" 2>&1 )
     local rc=$?
     [ "$rc" -ne 0 ] && log ERROR "миграции завершились с кодом $rc"
     return $rc
@@ -358,7 +359,7 @@ restore_snapshot() {
     local ver
     ver=$(cat "$dir/.version" 2>/dev/null)
     [ -n "$ver" ] && printf '%s' "$ver" > /var/www/version
-    run_migrations || log WARN "миграции при откате завершились с ошибкой"
+    run_migrations "$(deployed_ref | awk '{print $1}')" || log WARN "миграции при откате завершились с ошибкой"
     systemctl restart vpn-healthcheck.service 2>/dev/null || true
     systemctl restart apache2 2>/dev/null || true
     return 0
@@ -497,7 +498,7 @@ deploy() {
 
     [ "$is_rollback" = "1" ] && clamp_version_to_code
 
-    if ! run_migrations; then
+    if ! run_migrations "$ref"; then
         restore_snapshot "$snapshot" || log ERROR "ОТКАТ НЕ УДАЛСЯ — панель в несогласованном состоянии"
         log_event update_rollback "$ref" "migrations"
         rm -f "$PENDING_FILE"
@@ -519,7 +520,7 @@ deploy() {
     printf '%s %s\n' "$ref" "$target_sha" > "$DEPLOYED_FILE"
     rm -f "$PENDING_FILE"
     prune_snapshots
-    log INFO "деплой завершён: $ref ($target_sha), версия $(installed_version)"
+    log INFO "деплой завершён: выпуск $ref ($target_sha), схема v$(installed_version)"
     log_event update_ok "$ref" "$target_sha"
     return 0
 }
@@ -554,7 +555,7 @@ list_snapshots() {
         return 0
     fi
     for dir in $(valid_snapshots); do
-        printf '%s\tверсия %s\n' "$(basename "$dir")" "$(cat "$dir/.version" 2>/dev/null || printf '?')"
+        printf '%s\tсхема v%s\n' "$(basename "$dir")" "$(cat "$dir/.version" 2>/dev/null || printf '?')"
     done
 }
 

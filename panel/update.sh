@@ -97,8 +97,10 @@ case "$CURRENT_VERSION" in
         CURRENT_VERSION=0 ;;
 esac
 
-DEPLOYED_RELEASE=""
-[ -f /var/lib/vpn-panel/deployed ] && DEPLOYED_RELEASE=$(awk '{print $1}' /var/lib/vpn-panel/deployed 2>/dev/null)
+DEPLOYED_RELEASE="${VP_RELEASE:-}"
+if [ -z "$DEPLOYED_RELEASE" ] && [ -f /var/lib/vpn-panel/deployed ]; then
+    DEPLOYED_RELEASE=$(awk '{print $1}' /var/lib/vpn-panel/deployed 2>/dev/null)
+fi
 
 echo "" >&3
 [ -n "$DEPLOYED_RELEASE" ] && log_step "Выпуск панели: $DEPLOYED_RELEASE"
