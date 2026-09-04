@@ -17,7 +17,8 @@ MANIFEST_FILE="release.conf"
 MANIFEST_BRANCH="main"
 
 RSYNC_EXCLUDES=(--exclude '.git' --exclude '.gitignore' --exclude '.github'
-                --exclude '.release' --exclude '.version' --exclude '.state')
+                --exclude '.release' --exclude '.version' --exclude '.deployed'
+                --exclude '.state')
 
 log() {
     local level="$1" msg="$2" line
@@ -341,6 +342,7 @@ snapshot_now() {
     rsync -a --delete "${RSYNC_EXCLUDES[@]}" "$WEB_DIR"/ "$staging"/ 2>/dev/null || { rm -rf "$staging"; return 1; }
     printf '%s' "$(installed_release)" > "$staging/.release" || { rm -rf "$staging"; return 1; }
     printf '%s' "$(installed_release)" > "$staging/.version" || { rm -rf "$staging"; return 1; }
+    deployed_ref > "$staging/.deployed" 2>/dev/null || true
     save_state_files "$staging/.state" || { rm -rf "$staging"; return 1; }
     rm -rf "$dir"
     mv "$staging" "$dir" || return 1
@@ -440,10 +442,19 @@ restore_snapshot() {
     log WARN "откат на снимок $(basename "$dir")"
     sync_to_web "$dir" || return 1
     restore_state_files "$dir/.state"
-    local rel
+    local rel snap_ref
     rel=$(cat "$dir/.release" 2>/dev/null)
     [ -z "$rel" ] && rel=$(cat "$dir/.version" 2>/dev/null)
     [ -n "$rel" ] && printf '%s' "$rel" > "$VERSION_FILE"
+
+    snap_ref=$(head -1 "$dir/.deployed" 2>/dev/null)
+    if [ -n "$snap_ref" ]; then
+        mkdir -p "$STATE_DIR"
+        printf '%s\n' "$snap_ref" > "$DEPLOYED_FILE"
+    elif [ -n "$rel" ] && [ "$rel" != "0" ]; then
+        mkdir -p "$STATE_DIR"
+        printf 'v%s неизвестно\n' "$rel" > "$DEPLOYED_FILE"
+    fi
     run_migrations "$(deployed_ref | awk '{print $1}')" || log WARN "миграции при откате завершились с ошибкой"
     systemctl restart vpn-healthcheck.service 2>/dev/null || true
     systemctl restart apache2 2>/dev/null || true
@@ -606,11 +617,16 @@ rollback() {
     rm -f "$PENDING_FILE"
 
     pin=$(deployed_ref | awk '{print $1}')
-    if [ -n "$pin" ]; then
-        conf_set PINNED_TAG "$pin"
-        log WARN "сервер закреплён на $pin, иначе cron вернёт отклонённый релиз в течение часа"
-        log WARN "снять закрепление: vpn-panel-deploy unpin"
-    fi
+    case "$pin" in
+        v[0-9]*)
+            conf_set PINNED_TAG "$pin"
+            log WARN "сервер закреплён на $pin, иначе cron вернёт отклонённый релиз в течение часа"
+            log WARN "снять закрепление: vpn-panel-deploy unpin" ;;
+        *)
+            log WARN "выпуск из снимка не определён — закрепить не по чему"
+            log WARN "cron вернёт релиз из release.conf в течение часа; закрепите вручную:"
+            log WARN "  vpn-panel-deploy deploy <нужный тег> && vpn-panel-deploy rollback" ;;
+    esac
     log_event update_rollback "$(basename "${dir%/}")" "manual"
     return 0
 }
