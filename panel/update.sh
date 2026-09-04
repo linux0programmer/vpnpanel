@@ -21,7 +21,7 @@ UPDATE_PID=$BASHPID
 {
     echo ""
     echo "============================================"
-    echo "VPN Panel Update v$SCRIPT_VERSION"
+    echo "Проверка конфигурации, схема миграций v$SCRIPT_VERSION"
     echo "Запущено: $(date '+%Y-%m-%d %H:%M:%S')"
     echo "PID: $UPDATE_PID"
     if [ "${AUTO_RUN:-0}" = "1" ]; then
@@ -80,7 +80,7 @@ detect_interfaces() {
 {
     echo ""
     echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║       VPN Server Update v$SCRIPT_VERSION           ║${NC}"
+    echo -e "${CYAN}║      Миграции и проверка конфигурации     ║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════╝${NC}"
     echo ""
 } >&3
@@ -97,13 +97,16 @@ case "$CURRENT_VERSION" in
         CURRENT_VERSION=0 ;;
 esac
 
+DEPLOYED_RELEASE=""
+[ -f /var/lib/vpn-panel/deployed ] && DEPLOYED_RELEASE=$(awk '{print $1}' /var/lib/vpn-panel/deployed 2>/dev/null)
+
 echo "" >&3
-log_step "Текущая версия: $CURRENT_VERSION"
-log_step "Целевая версия: $SCRIPT_VERSION"
+[ -n "$DEPLOYED_RELEASE" ] && log_step "Выпуск панели: $DEPLOYED_RELEASE"
+log_step "Схема миграций: текущая v$CURRENT_VERSION, целевая v$SCRIPT_VERSION"
 echo "" >&3
 
 if [ "$CURRENT_VERSION" -ge "$SCRIPT_VERSION" ]; then
-    log_info "Система уже обновлена до v$CURRENT_VERSION — выполняю проверки конфигурации"
+    log_info "Схема миграций актуальна (v$CURRENT_VERSION) — выполняю проверки конфигурации"
 else
     log_warn "Применяю обновление..."
 fi
@@ -451,7 +454,11 @@ fi
 {
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║    Обновление завершено: v$CURRENT_VERSION → v$SCRIPT_VERSION         ║${NC}"
+    if [ "$CURRENT_VERSION" -lt "$SCRIPT_VERSION" ] 2>/dev/null; then
+        echo -e "${GREEN}║   Схема миграций: v$CURRENT_VERSION → v$SCRIPT_VERSION                   ║${NC}"
+    else
+        echo -e "${GREEN}║      Конфигурация проверена, схема v$SCRIPT_VERSION      ║${NC}"
+    fi
     echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
     echo ""
 } >&3
