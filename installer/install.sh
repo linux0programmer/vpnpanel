@@ -449,6 +449,18 @@ EOF
     netplan_extra_wans >> "$NETPLAN_FILE"
 }
 
+wan_current_mode() {
+    local out
+    out=$(ip -4 -o addr show "$INPUT_INTERFACE" scope global 2>/dev/null)
+    [ -z "$out" ] && { printf 'без адреса'; return; }
+    printf '%s' "$out" | grep -q ' dynamic ' && { printf 'DHCP'; return; }
+    printf 'статика'
+}
+
+wan_current_cidr() {
+    ip -4 -o addr show "$INPUT_INTERFACE" scope global 2>/dev/null | awk '{print $4}' | head -1
+}
+
 ssh_session_iface() {
     local server_ip
     [ -z "$SSH_CONNECTION" ] && return 1
@@ -521,10 +533,28 @@ configure_network() {
 
     {
         echo ""
-        echo "  1) DHCP на WAN"
-        echo "  2) Статический IP на WAN — ввести вручную"
-        echo "  3) Не менять WAN — оставить текущие настройки как есть"
-        echo -e "  4) Закрепить текущий адрес статикой ${WHITE}(адрес перестанет меняться)${NC}"
+        local cur_mode cur_cidr
+        cur_mode=$(wan_current_mode)
+        cur_cidr=$(wan_current_cidr)
+
+        echo -e "  Сейчас на $INPUT_INTERFACE: ${WHITE}${cur_mode}${NC}${cur_cidr:+, адрес ${WHITE}${cur_cidr}${NC}}"
+        echo ""
+        echo "  1) DHCP на WAN — адрес выдаёт провайдер, может меняться"
+        echo "  2) Статический IP на WAN — ввести адрес, маску и шлюз вручную"
+        if [ "$cur_mode" = "DHCP" ]; then
+            echo -e "  3) Не трогать WAN — останется ${WHITE}DHCP${NC}, адрес продолжит меняться"
+            echo -e "  4) Закрепить ${WHITE}${cur_cidr}${NC} статикой — адрес перестанет меняться"
+        elif [ "$cur_mode" = "статика" ]; then
+            echo -e "  3) Не трогать WAN — останется ${WHITE}статика ${cur_cidr}${NC}, настройками владеет прежний конфиг"
+            echo -e "  4) Закрепить ${WHITE}${cur_cidr}${NC} статикой — то же самое, но управляет панель"
+        else
+            echo "  3) Не трогать WAN — оставить как настроено сейчас"
+            echo "  4) Закрепить текущий адрес статикой — адреса нет, вариант не сработает"
+        fi
+        echo ""
+        echo -e "  ${WHITE}Разница 3 и 4:${NC} третий ничего не пишет про WAN и оставляет его"
+        echo "  прежнему конфигу; четвёртый переносит текущие адрес, шлюз и DNS"
+        echo "  в настройки панели статикой."
         echo ""
     } >&3
 
