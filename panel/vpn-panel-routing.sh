@@ -203,6 +203,20 @@ unpin_endpoint() {
     ip route del "$endpoint/32" 2>/dev/null || true
 }
 
+restart_active_tunnel() {
+    local unit
+    for unit in wg-quick@tun0 openvpn@tun0; do
+        systemctl is-active --quiet "$unit" 2>/dev/null || continue
+        if systemctl restart "$unit" >/dev/null 2>&1; then
+            printf 'туннель %s перезапущен под новый канал\n' "$unit"
+        else
+            printf 'не удалось перезапустить %s — проверьте туннель\n' "$unit" >&2
+        fi
+        return 0
+    done
+    return 0
+}
+
 set_active() {
     local iface="$1" force="${2:-}" gw current
     iface_exists "$iface" || { printf 'нет такого интерфейса: %s\n' "$iface" >&2; return 1; }
@@ -226,6 +240,7 @@ set_active() {
     apply_rules
     repin_saved_endpoint
     log_event wan_switch "${current:-неизвестно}" "$iface" "вручную"
+    [ "${VP_EVENT_SOURCE:-}" = "daemon" ] || restart_active_tunnel
     return 0
 }
 

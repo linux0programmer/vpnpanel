@@ -298,3 +298,122 @@
 .net-prio-btn:disabled {
     opacity: 0.25;
 }
+
+.wan-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.wan-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    transition: border-color var(--dur-fast) var(--ease),
+                background var(--dur-fast) var(--ease);
+}
+
+.wan-item:hover {
+    border-color: var(--border-strong);
+}
+
+.wan-item.is-active {
+    background: var(--tint-emerald), var(--surface-2);
+    border-color: var(--emerald-border);
+}
+
+.wan-item-order {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: 0 0 auto;
+}
+
+.wan-item-num {
+    font-size: var(--text-lg);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    min-width: 1ch;
+    text-align: center;
+}
+
+.wan-item.is-active .wan-item-num {
+    color: var(--emerald);
+}
+
+.wan-item-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.wan-item-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+}
+
+.wan-item-name {
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.wan-item-role {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.wan-item-role.is-active {
+    color: var(--emerald-text);
+    font-weight: 600;
+}
+
+.wan-item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-4);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.wan-item-meta b {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.wan-item-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: 0 0 auto;
+}
+
+.btn--icon-sm {
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
+}
+
+.btn--icon-sm svg {
+    width: 16px;
+    height: 16px;
+}
+
+@media (max-width: 720px) {
+    .wan-item {
+        flex-wrap: wrap;
+    }
+    .wan-item-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
