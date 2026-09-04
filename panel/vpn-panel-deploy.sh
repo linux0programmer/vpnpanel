@@ -141,14 +141,22 @@ repo_diag() {
 }
 
 fetch_src() {
-    local out rc=0
-    out=$(git -C "$SRC" fetch --tags --prune origin 2>&1) || rc=$?
-    [ "$rc" -eq 0 ] && return 0
+    local out rc=0 moved
+    out=$(git -C "$SRC" fetch --tags --prune --prune-tags --force origin 2>&1) || rc=$?
 
-    log ERROR "git fetch завершился с кодом $rc"
-    log_lines ERROR "$out"
-    repo_diag
-    return 1
+    if [ "$rc" -ne 0 ]; then
+        log ERROR "git fetch завершился с кодом $rc"
+        log_lines ERROR "$out"
+        repo_diag
+        return 1
+    fi
+
+    moved=$(printf '%s\n' "$out" | grep -c 'forced update' 2>/dev/null || printf '0')
+    if [ "${moved:-0}" -gt 0 ]; then
+        log WARN "теги в репозитории были передвинуты ($moved) — под прежним именем теперь другой код"
+        log_lines WARN "$(printf '%s\n' "$out" | grep 'forced update')"
+    fi
+    return 0
 }
 
 manifest_raw() {
