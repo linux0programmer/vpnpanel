@@ -8,7 +8,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     exit();
 }
 
-$netsettingsAssetsVer = '5.6.0';
+$netsettingsAssetsVer = '5.7.0';
 
 $netplanDir   = '/etc/netplan/';
 $yamlFilePath = null;
@@ -205,6 +205,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['wan_action'])) {
             'add'      => ['add-wan',    "Канал {$wanIface} добавлен"],
             'remove'   => ['remove-wan', "Канал {$wanIface} удалён"],
             'activate' => ['set-active', "Активный канал: {$wanIface}"],
+            'primary'  => ['set-primary', "Основной канал: {$wanIface}"],
         ];
         if (!isset($verbs[$wanAction])) {
             $flashMessage = 'Неизвестное действие';
@@ -554,6 +555,9 @@ $wanState = [
                     <td class="num"><?php echo $row['priority']; ?></td>
                     <td class="mono">
                         <?php echo htmlspecialchars($row['iface']); ?>
+                        <?php if ($row['priority'] === 1): ?>
+                            <span class="badge badge--blue">основной</span>
+                        <?php endif; ?>
                         <?php if ($row['active']): ?>
                             <span class="badge badge--emerald">активный</span>
                         <?php endif; ?>
@@ -569,6 +573,14 @@ $wanState = [
                                 <?php echo vp_csrfField(); ?>
                                 <input type="hidden" name="wan_iface" value="<?php echo htmlspecialchars($row['iface']); ?>">
                                 <button type="submit" class="btn btn--secondary btn--sm">Сделать активным</button>
+                            </form>
+                            <?php endif; ?>
+                            <?php if ($row['priority'] !== 1): ?>
+                            <form method="post" class="wan-inline-form">
+                                <input type="hidden" name="wan_action" value="primary">
+                                <?php echo vp_csrfField(); ?>
+                                <input type="hidden" name="wan_iface" value="<?php echo htmlspecialchars($row['iface']); ?>">
+                                <button type="submit" class="btn btn--ghost btn--sm">Сделать основным</button>
                             </form>
                             <?php endif; ?>
                             <a class="btn btn--ghost btn--sm"
@@ -588,6 +600,11 @@ $wanState = [
                 <?php endforeach; ?>
             </tbody>
         </table>
+    </div>
+
+    <div class="net-legend">
+        <span><span class="badge badge--blue">основной</span> — куда сервер возвращается, когда канал оживёт</span>
+        <span><span class="badge badge--emerald">активный</span> — через кого идёт трафик прямо сейчас</span>
     </div>
 
     <?php if (!empty($wanFree)): ?>
@@ -657,17 +674,17 @@ $wanState = [
 
         <?php if ($editingBackup): ?>
         <div class="net-note">
-            Настраивается резервный канал <span class="mono"><?php echo htmlspecialchars($inputInterface); ?></span>.
-            Основной сейчас — <span class="mono"><?php echo htmlspecialchars($confWan); ?></span>;
-            чтобы вернуться к нему, нажмите «Настроить» в его строке выше.
+            <b>Резервный канал.</b> Настраивается <span class="mono"><?php echo htmlspecialchars($inputInterface); ?></span>,
+            а трафик сейчас идёт через <span class="mono"><?php echo htmlspecialchars($confWan); ?></span>.
+            Вернуться к нему — «Настроить» в его строке выше.
         </div>
         <?php endif; ?>
 
         <?php if ($wanManagedElsewhere): ?>
         <div class="net-note">
-            Сейчас <span class="mono"><?php echo htmlspecialchars($inputInterface); ?></span> настраивается файлом
-            <span class="mono"><?php echo htmlspecialchars(basename($wanConfigFile)); ?></span>, а не панелью.
-            Поля заполнены тем, что реально поднято на интерфейсе. Если применить настройки,
+            <b>Настроен вне панели.</b> <span class="mono"><?php echo htmlspecialchars($inputInterface); ?></span>
+            описан файлом <span class="mono"><?php echo htmlspecialchars(basename($wanConfigFile)); ?></span>.
+            Поля заполнены тем, что реально поднято на интерфейсе; если применить настройки,
             панель опишет его в своём файле и возьмёт управление на себя.
         </div>
         <?php endif; ?>

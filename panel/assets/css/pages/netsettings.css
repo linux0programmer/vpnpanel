@@ -158,17 +158,37 @@
 }
 
 .net-note {
-    background: var(--tint-amber), var(--surface-2);
-    border: 1px solid var(--amber-border);
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     padding: var(--space-3) var(--space-4);
-    color: var(--amber-text);
+    color: var(--text-secondary);
     font-size: var(--text-sm);
-    line-height: 1.55;
+    line-height: 1.6;
 }
 
 .net-note .mono {
     color: var(--text-primary);
+}
+
+.net-note b {
+    color: var(--amber-text);
+    font-weight: 600;
+}
+
+.net-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-5);
+    margin-top: var(--space-4);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+}
+
+.net-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
 }
 
 .net-form {

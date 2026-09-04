@@ -331,6 +331,31 @@ add_wan() {
     printf 'добавлен канал %s (приоритет %s): %s\n' "$iface" "$(iface_index "$iface")" "$note"
 }
 
+set_primary() {
+    local iface="$1" list out w first
+    [ -z "$iface" ] && return 1
+    list=$(wan_list)
+    printf '%s\n' $list | grep -qx "$iface" || { printf 'канала нет в списке: %s\n' "$iface" >&2; return 1; }
+
+    first=$(printf '%s\n' $list | head -1)
+    if [ "$first" = "$iface" ]; then
+        printf 'канал %s и так основной\n' "$iface"
+        return 0
+    fi
+
+    out="$iface"
+    for w in $list; do
+        [ "$w" = "$iface" ] && continue
+        out="$out $w"
+    done
+
+    drop_rules
+    conf_set WAN_LIST "$out"
+    apply_rules
+    log_event wan_primary "$iface" "$first"
+    printf 'основной канал теперь %s (порядок: %s)\n' "$iface" "$out"
+}
+
 remove_wan() {
     local iface="$1" list out w
     [ -z "$iface" ] && return 1
@@ -419,6 +444,7 @@ vpn-panel-routing <команда>
   unpin <ip>            убрать маршрут до эндпоинта
   add-wan <iface>       добавить канал в конец списка приоритетов
   remove-wan <iface>    убрать канал из списка
+  set-primary <iface>   сделать канал основным (первым в списке приоритетов)
   free                  сетевые карты, не занятые под WAN или LAN
 EOF
 }
@@ -435,6 +461,7 @@ case "${1:-}" in
     unpin)      unpin_endpoint "$2" ;;
     add-wan)    add_wan "$2" ;;
     remove-wan) remove_wan "$2" ;;
+    set-primary) set_primary "$2" ;;
     free)       free_ifaces ;;
     *)          usage; exit 1 ;;
 esac

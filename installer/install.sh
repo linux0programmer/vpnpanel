@@ -1146,6 +1146,7 @@ www-data ALL=(ALL) NOPASSWD: /usr/local/sbin/vpn-panel-routing status
 www-data ALL=(ALL) NOPASSWD: /usr/local/sbin/vpn-panel-routing free
 www-data ALL=(ALL) NOPASSWD: /usr/local/sbin/vpn-panel-routing apply
 www-data ALL=(ALL) NOPASSWD: /usr/local/sbin/vpn-panel-routing set-active *
+www-data ALL=(ALL) NOPASSWD: /usr/local/sbin/vpn-panel-routing set-primary *
 www-data ALL=(ALL) NOPASSWD: /usr/local/sbin/vpn-panel-routing add-wan *
 www-data ALL=(ALL) NOPASSWD: /usr/local/sbin/vpn-panel-routing remove-wan *
 www-data ALL=(ALL) NOPASSWD: /usr/sbin/netplan apply
