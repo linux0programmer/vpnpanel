@@ -1,6 +1,9 @@
 <?php
 
 require_once __DIR__ . '/includes/guard.php';
+require_once __DIR__ . '/includes/vpn_helpers.php';
+
+$pageTitle = vp_panelConf('PANEL_TITLE', 'Вход');
 
 if (isset($_SESSION["authenticated"]) && $_SESSION["authenticated"] === true) {
     header("Location: index.php");
@@ -106,14 +109,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["password"])) {
     }
 }
 
-$cssVer = '5.5.1';
+$cssVer = '5.5.2';
 ?>
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Server VPN Panel — Вход</title>
+    <title><?php echo htmlspecialchars($pageTitle); ?></title>
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="referrer" content="no-referrer">
 
     <link rel="stylesheet" href="assets/css/tokens.css?v=<?php echo $cssVer; ?>">
     <link rel="stylesheet" href="assets/css/base.css?v=<?php echo $cssVer; ?>">
@@ -140,18 +145,22 @@ $cssVer = '5.5.1';
     }
 
 
-    .login-title {
-        font-size: var(--text-2xl);
-        font-weight: 700;
-        letter-spacing: var(--tracking-tight);
-        margin-bottom: var(--space-1);
-        color: var(--text-primary);
+    .login-mark {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 52px;
+        height: 52px;
+        margin: 0 auto var(--space-7);
+        border-radius: var(--radius-lg);
+        background: var(--surface-2);
+        border: 1px solid var(--border-subtle);
+        color: var(--text-muted);
     }
 
-    .login-sub {
-        color: var(--text-muted);
-        font-size: var(--text-sm);
-        margin-bottom: var(--space-8);
+    .login-mark svg {
+        width: 24px;
+        height: 24px;
     }
 
     .login-form {
@@ -196,12 +205,11 @@ $cssVer = '5.5.1';
 <div class="login-viewport">
     <div class="login-card">
 
-        <h1 class="login-title">Server VPN Panel</h1>
-        <div class="login-sub">Панель управления</div>
+        <div class="login-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg></div>
 
         <form method="POST" action="login.php" class="login-form" autocomplete="off">
             <div>
-                <label for="password" class="label">Пароль администратора (root)</label>
+                <label for="password" class="label">Пароль</label>
                 <div class="login-pass-wrap">
                     <input
                         type="password"

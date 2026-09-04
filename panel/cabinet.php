@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/includes/guard.php';
+require_once __DIR__ . '/includes/vpn_helpers.php';
 
 if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     header("Location: login.php");
@@ -66,7 +67,9 @@ $cssVer = '5.6.8';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VPN Server Panel</title>
+    <title><?php echo htmlspecialchars(vp_panelConf('PANEL_TITLE', 'Панель')); ?></title>
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="referrer" content="no-referrer">
 
     <link rel="stylesheet" href="assets/css/tokens.css?v=<?php echo $cssVer; ?>">
     <link rel="stylesheet" href="assets/css/base.css?v=<?php echo $cssVer; ?>">

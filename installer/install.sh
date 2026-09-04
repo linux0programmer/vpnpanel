@@ -1405,6 +1405,7 @@ LAN_PREFIX=$LOCAL_PREFIX
 LAN_MASK=$LOCAL_MASK
 DHCP_FROM=$DHCP_RANGE_START
 DHCP_TO=$DHCP_RANGE_END
+PANEL_TITLE=
 EOF
 
     if [ -x /usr/local/sbin/vpn-panel-routing ]; then
