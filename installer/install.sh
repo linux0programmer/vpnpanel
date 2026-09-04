@@ -59,7 +59,7 @@ chmod 644 "$LOG_FILE" 2>/dev/null
 {
     echo ""
     echo "════════════════════════════════════════════"
-    echo "VPN Panel Installer"
+    echo "VPN Server Panel Installer"
     echo "Запущено: $(date '+%Y-%m-%d %H:%M:%S')"
     echo "PID: $MAIN_PID"
     echo "════════════════════════════════════════════"
@@ -110,7 +110,7 @@ show_banner() {
     clear >&3
     {
         echo ""
-        echo -e "  ${WHITE}VPN SERVER INSTALLER${NC}"
+        echo -e "  ${WHITE}VPN SERVER PANEL INSTALLER${NC}"
         echo -e "  ${CYAN}────────────────────────────────────────${NC}"
         echo ""
     } >&3
