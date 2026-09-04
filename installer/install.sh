@@ -1570,7 +1570,7 @@ do_remove() {
         iptables -P INPUT ACCEPT; iptables -P OUTPUT ACCEPT
         [ -d /etc/iptables ] && { echo "" > /etc/iptables/rules.v4 2>/dev/null || true; }
     else
-        [ -d /etc/iptables ] && { iptables-save > /etc/iptables/rules.v4 2>/dev/null || true; }
+        log_info "Сохранённые правила iptables оставлены как есть до перенастройки файрвола"
     fi
 
     if [ "$mode" = "full" ]; then

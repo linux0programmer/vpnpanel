@@ -288,8 +288,25 @@ fi
 section "6. iptables — INPUT chain"
 
 IPT_INPUT=$(iptables -S INPUT 2>/dev/null)
+IPT_INPUT_MISS=0
 
-has_input_rule() { printf '%s\n' "$IPT_INPUT" | grep -qE "$1"; }
+has_input_rule() {
+    if printf '%s\n' "$IPT_INPUT" | grep -qE "$1"; then
+        return 0
+    fi
+    IPT_INPUT_MISS=$((IPT_INPUT_MISS + 1))
+    return 1
+}
+
+dump_input_chain() {
+    [ "$IPT_INPUT_MISS" -eq 0 ] && return 0
+    echo -e "  ${GRAY}[i]${NC} что на самом деле в цепочке INPUT ($(printf '%s\n' "$IPT_INPUT" | grep -c '^-A') правил):"
+    if [ -z "$IPT_INPUT" ]; then
+        echo -e "      ${RED}(пусто — iptables -S INPUT ничего не вернул)${NC}"
+    else
+        printf '%s\n' "$IPT_INPUT" | sed 's/^/      /'
+    fi
+}
 
 has_input_rule '^-A INPUT -i lo -j ACCEPT$' && \
     pass "INPUT lo ACCEPT" || \
@@ -337,6 +354,8 @@ if [ -n "$ACTUAL_LAN" ]; then
         pass "INPUT $ACTUAL_LAN UDP 67 (DHCP)" || \
         warn "INPUT $ACTUAL_LAN UDP 67 (DHCP) — отсутствует"
 fi
+
+dump_input_chain
 
 section "7. Systemd сервисы VPN Panel"
 
