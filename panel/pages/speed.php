@@ -7,7 +7,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     exit();
 }
 
-$speedAssetsVer = '1.0.0';
+$speedAssetsVer = '1.0.1';
 $speedBinary    = is_file('/usr/local/bin/speedtest') && is_executable('/usr/local/bin/speedtest');
 ?>
 
@@ -28,10 +28,12 @@ $speedBinary    = is_file('/usr/local/bin/speedtest') && is_executable('/usr/loc
     <div class="empty-state">
         <div class="empty-state-title">Speedtest CLI не установлен</div>
         <div class="empty-state-text">
-            Замер выполняет официальный клиент Ookla. Поставить его можно так:
-            <pre class="speed-hint mono">curl -fsSL https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-x86_64.tgz \
-  | tar -xz -C /usr/local/bin speedtest && chmod 755 /usr/local/bin/speedtest</pre>
-            После этого обновите страницу.
+            Он ставится сам — при установке панели и при каждом обновлении. Если вы это видите,
+            значит загрузка не удалась: скорее всего сервер не достучался до
+            <span class="mono">install.speedtest.net</span>.
+            <pre class="speed-hint mono">sudo vpn-panel-deploy deploy</pre>
+            повторит попытку. Если доступа к сайту Ookla нет совсем — положите бинарник в
+            <span class="mono">panel/bin/speedtest</span> в репозитории, и он поедет вместе с выпуском.
         </div>
     </div>
 </div>

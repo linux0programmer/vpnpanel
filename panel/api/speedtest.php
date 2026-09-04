@@ -102,7 +102,7 @@ if (!is_file(ST_BIN) || !is_executable(ST_BIN)) {
         'ok'     => false,
         'state'  => 'no-binary',
         'error'  => 'Speedtest CLI не установлен',
-        'hint'   => 'Поставить вручную: curl -fsSL https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-x86_64.tgz | tar -xz -C /usr/local/bin speedtest && chmod 755 /usr/local/bin/speedtest',
+        'hint'   => 'Клиент ставится сам при обновлении: sudo vpn-panel-deploy deploy',
     ]);
 }
 

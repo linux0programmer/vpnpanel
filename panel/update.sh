@@ -158,13 +158,51 @@ else
     fi
 fi
 
-if [ ! -x "$SPEEDTEST_BIN" ] && [ -f "$WEB_DIR/bin/speedtest" ]; then
-    if install -m 755 -o root -g root "$WEB_DIR/bin/speedtest" "$SPEEDTEST_BIN" 2>/dev/null; then
-        log_info "Speedtest CLI установлен из состава выпуска"
-    else
-        log_warn "Не удалось установить Speedtest CLI из $WEB_DIR/bin/speedtest"
+SPEEDTEST_VER="1.2.0"
+
+speedtest_arch() {
+    case "$(uname -m)" in
+        x86_64)  printf 'x86_64' ;;
+        aarch64) printf 'aarch64' ;;
+        armv7l)  printf 'armhf' ;;
+        *)       printf '' ;;
+    esac
+}
+
+ensure_speedtest() {
+    [ -x "$SPEEDTEST_BIN" ] && return 0
+
+    if [ -f "$WEB_DIR/bin/speedtest" ]; then
+        if install -m 755 -o root -g root "$WEB_DIR/bin/speedtest" "$SPEEDTEST_BIN" 2>/dev/null; then
+            log_info "Speedtest CLI установлен из состава выпуска"
+            return 0
+        fi
+        log_warn "Не удалось поставить Speedtest CLI из состава выпуска"
     fi
-fi
+
+    local arch tmp url
+    arch=$(speedtest_arch)
+    if [ -z "$arch" ]; then
+        log_warn "Архитектура $(uname -m) не поддерживается Speedtest CLI — страница «Скорость» недоступна"
+        return 0
+    fi
+
+    url="https://install.speedtest.net/app/cli/ookla-speedtest-${SPEEDTEST_VER}-linux-${arch}.tgz"
+    tmp=$(mktemp -d /var/tmp/vpn-panel-speedtest.XXXXXX) || return 0
+
+    if curl -fsSL --max-time 120 "$url" -o "$tmp/st.tgz" 2>/dev/null &&
+       tar -xzf "$tmp/st.tgz" -C "$tmp" speedtest 2>/dev/null &&
+       [ -f "$tmp/speedtest" ]; then
+        install -m 755 -o root -g root "$tmp/speedtest" "$SPEEDTEST_BIN"
+        log_info "Speedtest CLI ${SPEEDTEST_VER} загружен с сайта Ookla"
+    else
+        log_warn "Speedtest CLI не удалось загрузить — проверьте доступ к install.speedtest.net"
+    fi
+    rm -rf "$tmp"
+    return 0
+}
+
+ensure_speedtest
 
 if [ -f "$PANEL_NETPLAN" ]; then
     np_perms=$(stat -c '%a' "$PANEL_NETPLAN" 2>/dev/null)
