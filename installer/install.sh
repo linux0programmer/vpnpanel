@@ -44,6 +44,9 @@ SSH_IFACE=""
 PANEL_SRC=""
 SRC_DIR="/opt/vpn-panel/src"
 RAW_URL="https://raw.githubusercontent.com/linux0programmer/vpnpanel/main/installer/install.sh"
+SPEEDTEST_BIN="/usr/local/bin/speedtest"
+SPEEDTEST_VER="1.2.0"
+SPEEDTEST_DIR="/var/www/speedtest"
 OUTPUT_INTERFACE=""
 
 export DEBIAN_FRONTEND=noninteractive
@@ -1231,6 +1234,7 @@ www-data ALL=(ALL) NOPASSWD: /usr/local/sbin/vpn-panel-routing move-wan *
 www-data ALL=(ALL) NOPASSWD: /usr/local/sbin/vpn-panel-routing add-wan *
 www-data ALL=(ALL) NOPASSWD: /usr/local/sbin/vpn-panel-routing remove-wan *
 www-data ALL=(ALL) NOPASSWD: /usr/sbin/netplan apply
+www-data ALL=(ALL) NOPASSWD: /usr/local/bin/speedtest *
 # Управління сервером (settings.php → секція "Управление сервером")
 www-data ALL=(ALL) NOPASSWD: /bin/systemctl reboot
 www-data ALL=(ALL) NOPASSWD: /bin/systemctl poweroff
@@ -1351,6 +1355,53 @@ EOF
     systemctl daemon-reload
     systemctl enable --now vpn-healthcheck.service
     log_info "Мониторинг VPN установлен (daemon, ExecStart=$WEB_DIR/vpn-healthcheck.sh)"
+}
+
+speedtest_arch() {
+    case "$(uname -m)" in
+        x86_64)  printf 'x86_64' ;;
+        aarch64) printf 'aarch64' ;;
+        armv7l)  printf 'armhf' ;;
+        *)       printf '' ;;
+    esac
+}
+
+install_speedtest() {
+    log_step "Установка Speedtest CLI..."
+
+    mkdir -p "$SPEEDTEST_DIR"
+    chown www-data:www-data "$SPEEDTEST_DIR"
+    chmod 775 "$SPEEDTEST_DIR"
+
+    local shipped="$PANEL_SRC/bin/speedtest"
+    if [ -f "$shipped" ]; then
+        install -m 755 -o root -g root "$shipped" "$SPEEDTEST_BIN" && {
+            log_info "Speedtest CLI взят из репозитория"
+            return 0
+        }
+        log_warn "Не удалось поставить бинарник из репозитория"
+    fi
+
+    local arch tmp url
+    arch=$(speedtest_arch)
+    if [ -z "$arch" ]; then
+        log_warn "Архитектура $(uname -m) не поддерживается Speedtest CLI — страница «Скорость» будет недоступна"
+        return 0
+    fi
+
+    url="https://install.speedtest.net/app/cli/ookla-speedtest-${SPEEDTEST_VER}-linux-${arch}.tgz"
+    tmp=$(mktemp -d /var/tmp/vpn-panel-speedtest.XXXXXX) || return 0
+
+    if curl -fsSL --max-time 120 "$url" -o "$tmp/st.tgz" 2>/dev/null &&
+       tar -xzf "$tmp/st.tgz" -C "$tmp" speedtest 2>/dev/null &&
+       [ -f "$tmp/speedtest" ]; then
+        install -m 755 -o root -g root "$tmp/speedtest" "$SPEEDTEST_BIN"
+        log_info "Speedtest CLI ${SPEEDTEST_VER} загружен с сайта Ookla"
+    else
+        log_warn "Speedtest CLI не установлен — страница «Скорость» покажет, как поставить вручную"
+    fi
+    rm -rf "$tmp"
+    return 0
 }
 
 configure_shellinabox() {
@@ -1545,6 +1596,7 @@ full_install() {
         "configure_settings"
         "configure_routing"
         "configure_vpn_monitor"
+        "install_speedtest"
         "configure_shellinabox"
         "configure_auto_update"
         "finalize"
@@ -1618,6 +1670,8 @@ do_remove() {
     rm -f /etc/systemd/system/vpn-panel-routing.service
     systemctl daemon-reload 2>/dev/null || true
     rm -f /usr/local/sbin/vpn-panel-deploy /usr/local/sbin/vpn-panel-routing
+    rm -f "$SPEEDTEST_BIN"
+    rm -rf "$SPEEDTEST_DIR"
     if [ -d /opt/vpn-panel/releases ] && [ -n "$(ls -A /opt/vpn-panel/releases 2>/dev/null)" ]; then
         log_warn "Удаляю снимки прошлой установки — они содержат её настройки сети и не подойдут новой"
     fi

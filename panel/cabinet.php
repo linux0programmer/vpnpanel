@@ -37,6 +37,7 @@ $menu_pages = [
     'stats'       => 'pages/stats.php',
     'vpn'         => 'pages/vpn-manager.php',
     'ping'        => 'pages/pinger.php',
+    'speed'       => 'pages/speed.php',
     'console'     => 'pages/console.php',
     'netsettings' => 'pages/netsettings.php',
     'settings'    => 'pages/settings.php',
@@ -115,6 +116,14 @@ $cssVer = '5.6.8';
                     <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                 </svg>
                 <span class="menu-label">Пинг</span>
+            </a>
+
+            <a href="cabinet.php?menu=speed" class="<?php echo menuActive($menu_item, 'speed'); ?>" data-accent="cyan">
+                <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 1018 0 9 9 0 00-18 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 12l4-4"/>
+                </svg>
+                <span class="menu-label">Скорость</span>
             </a>
 
             <a href="cabinet.php?menu=console" class="<?php echo menuActive($menu_item, 'console'); ?>" data-accent="purple">

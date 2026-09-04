@@ -140,6 +140,32 @@ for f in /var/www/vpn-state /var/www/settings; do
     fi
 done
 
+SPEEDTEST_BIN="/usr/local/bin/speedtest"
+SPEEDTEST_DIR="/var/www/speedtest"
+
+if [ ! -d "$SPEEDTEST_DIR" ]; then
+    mkdir -p "$SPEEDTEST_DIR"
+    chown www-data:www-data "$SPEEDTEST_DIR"
+    chmod 775 "$SPEEDTEST_DIR"
+    log_info "Создан каталог результатов замеров $SPEEDTEST_DIR"
+else
+    st_perms=$(stat -c '%a' "$SPEEDTEST_DIR" 2>/dev/null)
+    st_owner=$(stat -c '%U' "$SPEEDTEST_DIR" 2>/dev/null)
+    if [ "$st_perms" != "775" ] || [ "$st_owner" != "www-data" ]; then
+        chown www-data:www-data "$SPEEDTEST_DIR" 2>/dev/null || true
+        chmod 775 "$SPEEDTEST_DIR" 2>/dev/null && \
+            log_info "Исправлены права $SPEEDTEST_DIR: $st_owner $st_perms → www-data 775"
+    fi
+fi
+
+if [ ! -x "$SPEEDTEST_BIN" ] && [ -f "$WEB_DIR/bin/speedtest" ]; then
+    if install -m 755 -o root -g root "$WEB_DIR/bin/speedtest" "$SPEEDTEST_BIN" 2>/dev/null; then
+        log_info "Speedtest CLI установлен из состава выпуска"
+    else
+        log_warn "Не удалось установить Speedtest CLI из $WEB_DIR/bin/speedtest"
+    fi
+fi
+
 if [ -f "$PANEL_NETPLAN" ]; then
     np_perms=$(stat -c '%a' "$PANEL_NETPLAN" 2>/dev/null)
     np_owner=$(stat -c '%U:%G' "$PANEL_NETPLAN" 2>/dev/null)
@@ -422,6 +448,7 @@ SUDOERS_REQUIRED="
 /usr/local/sbin/vpn-panel-routing add-wan *
 /usr/local/sbin/vpn-panel-routing remove-wan *
 /usr/sbin/netplan apply
+/usr/local/bin/speedtest *
 "
 
 if [ -f "$SUDOERS_FILE" ]; then
