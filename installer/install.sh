@@ -1673,6 +1673,14 @@ do_remove() {
             dnsmasq iptables-persistent netfilter-persistent \
             resolvconf shellinabox 2>/dev/null || true
         apt_run 600 autoremove -y -qq 2>/dev/null || true
+
+        local leftovers
+        leftovers=$(dpkg -l 2>/dev/null | awk '/^rc/ {print $2}' | grep -E '^(apache2|libapache2|php)' | tr '\n' ' ')
+        if [ -n "$leftovers" ]; then
+            log_info "Дочищаю остатки конфигураций: $leftovers"
+            apt_run 300 purge -y -qq $leftovers 2>/dev/null || true
+        fi
+
         apt_run 300 autoclean -y -qq 2>/dev/null || true
         rm -rf /etc/apache2 /var/log/apache2
 
