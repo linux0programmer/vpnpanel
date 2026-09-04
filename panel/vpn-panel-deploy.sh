@@ -92,7 +92,13 @@ ensure_src() {
     if [ ! -d "$SRC/.git" ]; then
         mkdir -p "$(dirname "$SRC")"
         log INFO "клонирую $url -> $SRC"
-        git clone --quiet "$url" "$SRC" || { log ERROR "клонирование не удалось"; return 1; }
+        local clone_out clone_rc=0
+        clone_out=$(git clone "$url" "$SRC" 2>&1) || clone_rc=$?
+        if [ "$clone_rc" -ne 0 ]; then
+            log ERROR "клонирование не удалось (код $clone_rc)"
+            log_lines ERROR "$clone_out"
+            return 1
+        fi
         conf_set REPO_URL "$url"
     fi
     git config --global --get-all safe.directory 2>/dev/null | grep -qx "$SRC" || \
@@ -100,12 +106,49 @@ ensure_src() {
     return 0
 }
 
+log_lines() {
+    local level="$1" text="$2" line
+    [ -z "$text" ] && return 0
+    printf '%s\n' "$text" | while IFS= read -r line; do
+        [ -n "$line" ] && log "$level" "  $line"
+    done
+}
+
+repo_diag() {
+    local url host code
+    url=$(repo_url)
+    log INFO "диагностика доступа к репозиторию"
+    log INFO "  REPO_URL: ${url:-не задан}"
+    log INFO "  origin:   $(git -C "$SRC" remote get-url origin 2>&1 | head -1)"
+
+    host=$(printf '%s' "$url" | sed -E 's#^[a-z+]+://##; s#^[^@]*@##; s#[:/].*$##')
+    if [ -n "$host" ]; then
+        if getent hosts "$host" >/dev/null 2>&1; then
+            log INFO "  DNS $host: $(getent hosts "$host" | head -1 | awk '{print $1}')"
+        else
+            log ERROR "  DNS $host: не резолвится — смотрите /etc/resolv.conf"
+        fi
+    fi
+
+    if command -v curl >/dev/null 2>&1 && [ -n "$url" ]; then
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" 2>/dev/null)
+        if [ "$code" = "000" ]; then
+            log ERROR "  HTTPS $url: соединение не установлено"
+        else
+            log INFO "  HTTPS $url: HTTP $code"
+        fi
+    fi
+}
+
 fetch_src() {
-    git -C "$SRC" fetch --quiet --tags --prune origin 2>/dev/null || {
-        log ERROR "git fetch не удался — сеть недоступна или репозиторий закрыт"
-        return 1
-    }
-    return 0
+    local out rc=0
+    out=$(git -C "$SRC" fetch --tags --prune origin 2>&1) || rc=$?
+    [ "$rc" -eq 0 ] && return 0
+
+    log ERROR "git fetch завершился с кодом $rc"
+    log_lines ERROR "$out"
+    repo_diag
+    return 1
 }
 
 manifest_raw() {
