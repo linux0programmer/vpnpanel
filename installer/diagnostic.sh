@@ -33,6 +33,7 @@ fi
 pass() {
     PASSED=$((PASSED + 1))
     [ "$QUIET" -eq 0 ] && echo -e "  ${GREEN}[✓]${NC} $1"
+    return 0
 }
 
 warn() {
@@ -49,6 +50,7 @@ fail() {
 
 info() {
     [ "$QUIET" -eq 0 ] && echo -e "  ${GRAY}[i]${NC} $1"
+    return 0
 }
 
 section() {
@@ -56,6 +58,7 @@ section() {
         echo ""
         echo -e "${CYAN}━━━ $1 ━━━${NC}"
     }
+    return 0
 }
 
 if [ "$EUID" -ne 0 ]; then
@@ -238,7 +241,7 @@ else
     fail "FORWARD policy: $fwd_policy (ожидается DROP — без этого Kill Switch не работает)"
 fi
 
-if iptables -t nat -C POSTROUTING -o tun0 -s "$LAN_NET" -j MASQUERADE 2>/dev/null; then
+if iptables -t nat -S POSTROUTING 2>/dev/null | grep -qE "^-A POSTROUTING -s ${LAN_NET//./\.} -o tun0 -j MASQUERADE\$"; then
     pass "NAT MASQUERADE -o tun0 для $LAN_NET: присутствует"
 else
     fail "NAT MASQUERADE -o tun0 для $LAN_NET: ОТСУТСТВУЕТ"
