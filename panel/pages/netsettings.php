@@ -8,7 +8,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     exit();
 }
 
-$netsettingsAssetsVer = '6.0.0';
+$netsettingsAssetsVer = '6.1.0';
 
 $netplanDir   = '/etc/netplan/';
 $yamlFilePath = null;
@@ -72,6 +72,51 @@ function netplanFileFor(string $dir, string $iface): string {
         }
     }
     return $found;
+}
+
+function wanFormData(string $iface, string $fallbackGateway, array $allEthernets, string $netplanDir, string $ownFile): array {
+    $cfg  = $allEthernets[$iface] ?? [];
+    $type = (isset($cfg['dhcp4']) && $cfg['dhcp4']) ? 'dhcp' : 'static';
+
+    $addr = ''; $mask = ''; $gw = ''; $dns = '';
+
+    if (isset($cfg['addresses'][0])) {
+        $parts = explode('/', $cfg['addresses'][0]);
+        $addr  = $parts[0];
+        $mask  = $parts[1] ?? '';
+    }
+    if (isset($cfg['routes']) && is_array($cfg['routes'])) {
+        foreach ($cfg['routes'] as $route) {
+            if (($route['to'] ?? '') === 'default' && isset($route['via'])) { $gw = $route['via']; break; }
+        }
+    } elseif (isset($cfg['gateway4'])) {
+        $gw = $cfg['gateway4'];
+    }
+    if (isset($cfg['nameservers']['addresses'])) {
+        $dns = implode(', ', $cfg['nameservers']['addresses']);
+    }
+
+    $live = getInterfaceLiveInfo($iface);
+    if ($addr === '' && $live['ip'] !== '—') {
+        $addr = $live['ip'];
+        if ($mask === '' && $live['mask'] !== '—') $mask = $live['mask'];
+    }
+    if ($gw === '' && $live['gateway'] !== '—') $gw = $live['gateway'];
+    if ($gw === '' && $fallbackGateway !== '' && $fallbackGateway !== '-') $gw = $fallbackGateway;
+    if ($dns === '' && !empty($live['dns'])) $dns = implode(', ', $live['dns']);
+    if ($mask === '') $mask = '24';
+
+    $file = netplanFileFor($netplanDir, $iface);
+
+    return [
+        'type'    => $type,
+        'address' => $addr,
+        'mask'    => $mask,
+        'gateway' => $gw,
+        'dns'     => $dns,
+        'file'    => $file,
+        'foreign' => $file !== '' && $file !== $ownFile,
+    ];
 }
 
 function ifaceExists(string $iface): bool {
@@ -328,18 +373,9 @@ $outputConfig    = [];
 $confWan = vp_panelConf('WAN', '');
 $confLan = vp_panelConf('LAN', '');
 
-$wanChannelNames = [];
-foreach (vp_wanList() as $chanRow) {
-    if (!empty($chanRow['iface'])) $wanChannelNames[] = $chanRow['iface'];
-}
-
-$editIface = trim($_GET['iface'] ?? '');
-if ($editIface !== '' && !in_array($editIface, $wanChannelNames, true)) $editIface = '';
-if ($editIface === '') $editIface = $confWan;
-
-if ($editIface !== '' && ifaceExists($editIface)) {
-    $inputInterface = $editIface;
-    $inputConfig    = $allEthernets[$editIface] ?? [];
+if ($confWan !== '' && ifaceExists($confWan)) {
+    $inputInterface = $confWan;
+    $inputConfig    = $allEthernets[$confWan] ?? [];
 }
 if ($confLan !== '' && ifaceExists($confLan)) {
     $outputInterface = $confLan;
@@ -360,7 +396,6 @@ if (empty($inputInterface) || empty($outputInterface)) {
 
 $wanConfigFile = $inputInterface !== '' ? netplanFileFor($netplanDir, $inputInterface) : '';
 $wanManagedElsewhere = $wanConfigFile !== '' && $wanConfigFile !== $yamlFilePath;
-$editingBackup = $confWan !== '' && $inputInterface !== '' && $inputInterface !== $confWan;
 
 $inputType = (isset($inputConfig['dhcp4']) && $inputConfig['dhcp4']) ? 'dhcp' : 'static';
 $inputAddress = '';
@@ -603,16 +638,13 @@ $wanState = [
             <div class="wan-item-actions">
                 <?php if (!$row['active'] && $isUp): ?>
                 <form method="post" class="wan-inline-form"
-                      data-confirm="Направить весь интернет через <?php echo htmlspecialchars($row['iface']); ?>?">
+                      data-confirm="Пустить весь интернет через <?php echo htmlspecialchars($row['iface']); ?>?">
                     <input type="hidden" name="wan_action" value="activate">
                     <?php echo vp_csrfField(); ?>
                     <input type="hidden" name="wan_iface" value="<?php echo htmlspecialchars($row['iface']); ?>">
-                    <button type="submit" class="btn btn--secondary btn--sm">Пустить интернет сюда</button>
+                    <button type="submit" class="btn btn--secondary btn--sm">Подключить интернет отсюда</button>
                 </form>
                 <?php endif; ?>
-
-                <a class="btn btn--ghost btn--icon-sm" title="Настроить канал"
-                   href="?menu=netsettings&amp;iface=<?php echo urlencode($row['iface']); ?>"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></a>
 
                 <?php if (count($wanRows) > 1): ?>
                 <form method="post" class="wan-inline-form"
@@ -681,8 +713,15 @@ $wanState = [
 })();
 </script>
 
+<?php foreach ($wanRows as $chan):
+    $ci   = $chan['iface'];
+    $cid  = preg_replace('/[^a-zA-Z0-9_]/', '_', $ci);
+    $data = wanFormData($ci, $chan['gateway'], $allEthernets, $netplanDir, $yamlFilePath);
+?>
 <form method="post" class="net-form">
     <?php echo vp_csrfField(); ?>
+    <input type="hidden" name="input_interface"  value="<?php echo htmlspecialchars($ci); ?>">
+    <input type="hidden" name="output_interface" value="<?php echo htmlspecialchars($outputInterface); ?>">
 
     <div class="card card--accent-blue">
         <div class="card-header">
@@ -690,117 +729,110 @@ $wanState = [
                 <span class="icon-badge icon-badge--violet">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/></svg>
                 </span>
-                Входящее подключение (WAN)
+                Канал <?php echo (int)$chan['priority']; ?> — настройки
+                <?php if ($chan['active']): ?>
+                    <span class="badge badge--emerald">активный</span>
+                <?php endif; ?>
             </div>
-            <span class="net-iface-pill"><?php echo htmlspecialchars($inputInterface); ?></span>
+            <span class="net-iface-pill"><?php echo htmlspecialchars($ci); ?></span>
         </div>
 
-        <input type="hidden" name="input_interface"  value="<?php echo htmlspecialchars($inputInterface); ?>">
-        <input type="hidden" name="output_interface" value="<?php echo htmlspecialchars($outputInterface); ?>">
-
-        <?php if ($editingBackup): ?>
+        <?php if ($data['foreign']): ?>
         <div class="net-note">
-            <b>Резервный канал.</b> Настраивается <span class="mono"><?php echo htmlspecialchars($inputInterface); ?></span>,
-            а трафик сейчас идёт через <span class="mono"><?php echo htmlspecialchars($confWan); ?></span>.
-            Вернуться к нему — «Настроить» в его строке выше.
-        </div>
-        <?php endif; ?>
-
-        <?php if ($wanManagedElsewhere): ?>
-        <div class="net-note">
-            <b>Настроен вне панели.</b> <span class="mono"><?php echo htmlspecialchars($inputInterface); ?></span>
-            описан файлом <span class="mono"><?php echo htmlspecialchars(basename($wanConfigFile)); ?></span>.
+            <b>Настроен вне панели.</b> <span class="mono"><?php echo htmlspecialchars($ci); ?></span>
+            описан файлом <span class="mono"><?php echo htmlspecialchars(basename($data['file'])); ?></span>.
             Поля заполнены тем, что реально поднято на интерфейсе; если применить настройки,
             панель опишет его в своём файле и возьмёт управление на себя.
         </div>
         <?php endif; ?>
 
         <div class="net-form-fields">
-
             <div class="net-row">
-                <label for="connection_type" class="net-row-label">Тип подключения</label>
-                <select name="connection_type" id="connection_type" class="select" onchange="toggleStaticFields()">
-                    <option value="dhcp"   <?php echo $inputType === 'dhcp'   ? 'selected' : ''; ?>>DHCP (автоматически)</option>
-                    <option value="static" <?php echo $inputType === 'static' ? 'selected' : ''; ?>>Статический IP</option>
+                <label for="ctype_<?php echo $cid; ?>" class="net-row-label">Тип подключения</label>
+                <select name="connection_type" id="ctype_<?php echo $cid; ?>" class="select"
+                        data-fields="sfields_<?php echo $cid; ?>">
+                    <option value="dhcp"   <?php echo $data['type'] === 'dhcp'   ? 'selected' : ''; ?>>DHCP (автоматически)</option>
+                    <option value="static" <?php echo $data['type'] === 'static' ? 'selected' : ''; ?>>Статический IP</option>
                 </select>
             </div>
 
-            <div id="staticFields" class="net-static-fields" style="display: <?php echo $inputType === 'static' ? 'flex' : 'none'; ?>;">
-
+            <div id="sfields_<?php echo $cid; ?>" class="net-static-fields"
+                 style="display: <?php echo $data['type'] === 'static' ? 'flex' : 'none'; ?>;">
                 <div class="net-row">
-                    <label for="address" class="net-row-label">IP-адрес</label>
-                    <input type="text" id="address" name="address" class="input mono"
-                           value="<?php echo htmlspecialchars($inputAddress); ?>"
-                           placeholder="192.168.1.100">
+                    <label for="addr_<?php echo $cid; ?>" class="net-row-label">IP-адрес</label>
+                    <input type="text" id="addr_<?php echo $cid; ?>" name="address" class="input mono"
+                           value="<?php echo htmlspecialchars($data['address']); ?>" placeholder="192.168.1.100">
                 </div>
-
                 <div class="net-row">
-                    <label for="subnet_mask" class="net-row-label">Маска подсети</label>
-                    <input type="number" min="1" max="32" id="subnet_mask" name="subnet_mask" class="input mono"
-                           value="<?php echo htmlspecialchars($inputSubnetMask); ?>" placeholder="24">
+                    <label for="mask_<?php echo $cid; ?>" class="net-row-label">Маска подсети</label>
+                    <input type="number" min="1" max="32" id="mask_<?php echo $cid; ?>" name="subnet_mask" class="input mono"
+                           value="<?php echo htmlspecialchars($data['mask']); ?>" placeholder="24">
                 </div>
-
                 <div class="net-row">
-                    <label for="gateway" class="net-row-label">Шлюз</label>
-                    <input type="text" id="gateway" name="gateway" class="input mono"
-                           value="<?php echo htmlspecialchars($inputGateway); ?>"
-                           placeholder="192.168.1.1">
+                    <label for="gw_<?php echo $cid; ?>" class="net-row-label">Шлюз</label>
+                    <input type="text" id="gw_<?php echo $cid; ?>" name="gateway" class="input mono"
+                           value="<?php echo htmlspecialchars($data['gateway']); ?>" placeholder="192.168.1.1">
                 </div>
-
                 <div class="net-row">
-                    <label for="dns" class="net-row-label">DNS (через запятую)</label>
-                    <input type="text" id="dns" name="dns" class="input mono"
-                           value="<?php echo htmlspecialchars($inputDNS); ?>"
-                           placeholder="8.8.8.8, 8.8.4.4">
+                    <label for="dns_<?php echo $cid; ?>" class="net-row-label">DNS (через запятую)</label>
+                    <input type="text" id="dns_<?php echo $cid; ?>" name="dns" class="input mono"
+                           value="<?php echo htmlspecialchars($data['dns']); ?>" placeholder="8.8.8.8, 8.8.4.4">
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="card card--accent-violet">
-        <div class="card-header">
-            <div class="card-title">
-                <span class="icon-badge icon-badge--emerald">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                </span>
-                Локальная сеть (LAN)
-            </div>
-            <span class="net-iface-pill"><?php echo htmlspecialchars($outputInterface); ?></span>
+        <div class="net-submit-row">
+            <button type="submit" name="apply_settings" value="1" class="btn btn--primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="16" height="16">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                </svg>
+                Применить к <?php echo htmlspecialchars($ci); ?>
+            </button>
         </div>
-
-        <div class="net-form-fields">
-            <div class="net-row">
-                <span class="net-row-label">IP-адрес шлюза</span>
-                <span class="net-readonly-value"><?php echo htmlspecialchars($outputAddress ?: vp_panelConf('LAN_IP', '10.32.0.1')); ?></span>
-            </div>
-            <div class="net-row">
-                <span class="net-row-label">Маска подсети</span>
-                <span class="net-readonly-value">/<?php echo htmlspecialchars($outputSubnetMask ?: vp_panelConf('LAN_PREFIX', '20')); ?> (<?php echo htmlspecialchars(vp_panelConf('LAN_MASK', '255.255.240.0')); ?>)</span>
-            </div>
-            <div class="net-row">
-                <span class="net-row-label">Диапазон DHCP</span>
-                <span class="net-readonly-value"><?php echo htmlspecialchars(vp_panelConf('DHCP_FROM', '10.32.0.2')); ?> — <?php echo htmlspecialchars(vp_panelConf('DHCP_TO', '10.32.15.254')); ?></span>
-            </div>
-        </div>
-    </div>
-
-    <div class="net-submit-row">
-        <button type="submit" name="apply_settings" value="1" class="btn btn--primary btn--lg">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" width="16" height="16">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-            </svg>
-            Применить настройки
-        </button>
     </div>
 </form>
+<?php endforeach; ?>
+
+<div class="card card--accent-violet">
+    <div class="card-header">
+        <div class="card-title">
+            <span class="icon-badge icon-badge--emerald">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            </span>
+            Локальная сеть (LAN)
+        </div>
+        <span class="net-iface-pill"><?php echo htmlspecialchars($outputInterface); ?></span>
+    </div>
+
+    <div class="net-form-fields">
+        <div class="net-row">
+            <span class="net-row-label">IP-адрес шлюза</span>
+            <span class="net-readonly-value"><?php echo htmlspecialchars($outputAddress ?: vp_panelConf('LAN_IP', '10.32.0.1')); ?></span>
+        </div>
+        <div class="net-row">
+            <span class="net-row-label">Маска подсети</span>
+            <span class="net-readonly-value">/<?php echo htmlspecialchars($outputSubnetMask ?: vp_panelConf('LAN_PREFIX', '20')); ?> (<?php echo htmlspecialchars(vp_panelConf('LAN_MASK', '255.255.240.0')); ?>)</span>
+        </div>
+        <div class="net-row">
+            <span class="net-row-label">Диапазон DHCP</span>
+            <span class="net-readonly-value"><?php echo htmlspecialchars(vp_panelConf('DHCP_FROM', '10.32.0.2')); ?> — <?php echo htmlspecialchars(vp_panelConf('DHCP_TO', '10.32.15.254')); ?></span>
+        </div>
+    </div>
+</div>
 
 <script>
 
-function toggleStaticFields() {
-    const type = document.getElementById('connection_type').value;
-    const fields = document.getElementById('staticFields');
-    fields.style.display = (type === 'static') ? 'flex' : 'none';
-    fields.querySelectorAll('input').forEach(i => { i.required = (type === 'static'); });
+function toggleStaticFields(select) {
+    const fields = document.getElementById(select.dataset.fields);
+    if (!fields) return;
+    const on = select.value === 'static';
+    fields.style.display = on ? 'flex' : 'none';
+    fields.querySelectorAll('input').forEach(i => { i.required = on; });
 }
-document.addEventListener('DOMContentLoaded', toggleStaticFields);
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('select[data-fields]').forEach(sel => {
+        sel.addEventListener('change', () => toggleStaticFields(sel));
+        toggleStaticFields(sel);
+    });
+});
 </script>
