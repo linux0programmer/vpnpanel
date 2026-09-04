@@ -833,7 +833,6 @@
         max-height: 280px;
     }
 }
-</content>
 
 .section-card--blue { background: var(--tint-blue),    var(--surface-1); }
 .section-card--cyan { background: var(--tint-cyan),    var(--surface-1); }

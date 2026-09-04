@@ -8,7 +8,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
 $hostname   = gethostname() ?: 'server';
 $shellReady = file_exists('/var/www/shell-token');
 
-$consoleAssetsVer = '5.5.5';
+$consoleAssetsVer = '5.6.0';
 ?>
 
 <link rel="stylesheet" href="assets/css/pages/console.css?v=<?php echo $consoleAssetsVer; ?>">

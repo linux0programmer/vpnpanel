@@ -5,7 +5,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     exit();
 }
 
-$pingerAssetsVer = '5.5.2';
+$pingerAssetsVer = '5.6.0';
 ?>
 
 <link rel="stylesheet" href="assets/css/pages/pinger.css?v=<?php echo $pingerAssetsVer; ?>">

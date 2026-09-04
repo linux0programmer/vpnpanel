@@ -8,7 +8,7 @@ if (!isset($_SESSION["authenticated"]) || $_SESSION["authenticated"] !== true) {
     exit();
 }
 
-$netsettingsAssetsVer = '6.1.0';
+$netsettingsAssetsVer = '6.2.0';
 
 $netplanDir   = '/etc/netplan/';
 $yamlFilePath = null;

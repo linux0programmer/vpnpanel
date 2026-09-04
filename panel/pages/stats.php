@@ -41,7 +41,7 @@ if ($netplanFile && function_exists('yaml_parse_file')) {
     }
 }
 
-$statsAssetsVer = '5.5.19';
+$statsAssetsVer = '5.6.0';
 ?>
 
 <link rel="stylesheet" href="assets/css/pages/stats.css?v=<?php echo $statsAssetsVer; ?>">
