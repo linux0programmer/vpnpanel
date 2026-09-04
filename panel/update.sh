@@ -387,25 +387,51 @@ fi
 
 
 SUDOERS_FILE="/etc/sudoers.d/vpn-panel-www-data"
+SUDOERS_REQUIRED="
+/bin/systemctl reboot
+/bin/systemctl poweroff
+/usr/local/sbin/vpn-panel-routing status
+/usr/local/sbin/vpn-panel-routing free
+/usr/local/sbin/vpn-panel-routing apply
+/usr/local/sbin/vpn-panel-routing set-active *
+/usr/local/sbin/vpn-panel-routing set-primary *
+/usr/local/sbin/vpn-panel-routing add-wan *
+/usr/local/sbin/vpn-panel-routing remove-wan *
+/usr/sbin/netplan apply
+"
+
 if [ -f "$SUDOERS_FILE" ]; then
-    sudoers_changed=0
+    sudoers_added=""
+    cp -a "$SUDOERS_FILE" "${SUDOERS_FILE}.bak" 2>/dev/null || true
 
-    if ! grep -qF "/bin/systemctl reboot" "$SUDOERS_FILE"; then
-        echo "www-data ALL=(ALL) NOPASSWD: /bin/systemctl reboot" >> "$SUDOERS_FILE"
-        sudoers_changed=1
+    printf '%s\n' "$SUDOERS_REQUIRED" | while IFS= read -r cmd; do
+        [ -z "$cmd" ] && continue
+        grep -qF "NOPASSWD: $cmd" "$SUDOERS_FILE" && continue
+        echo "www-data ALL=(ALL) NOPASSWD: $cmd" >> "$SUDOERS_FILE"
+        echo "$cmd" >> /tmp/vp-sudoers-added.$$
+    done
+
+    if [ -f "/tmp/vp-sudoers-added.$$" ]; then
+        sudoers_added=$(tr '\n' ' ' < "/tmp/vp-sudoers-added.$$")
+        rm -f "/tmp/vp-sudoers-added.$$"
     fi
 
-    if ! grep -qF "/bin/systemctl poweroff" "$SUDOERS_FILE"; then
-        echo "www-data ALL=(ALL) NOPASSWD: /bin/systemctl poweroff" >> "$SUDOERS_FILE"
-        sudoers_changed=1
-    fi
-
-    if [ "$sudoers_changed" = "1" ]; then
+    if [ -n "$sudoers_added" ]; then
         if visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
-            log_info "Sudoers: добавлены reboot/poweroff (для страницы Настройки → Управление сервером)"
+            chmod 440 "$SUDOERS_FILE"
+            rm -f "${SUDOERS_FILE}.bak"
+            log_info "Sudoers: добавлены недостающие права — $sudoers_added"
         else
-            log_warn "Sudoers: ошибка валидации после добавления reboot/poweroff! Проверьте $SUDOERS_FILE"
+            if [ -f "${SUDOERS_FILE}.bak" ]; then
+                mv -f "${SUDOERS_FILE}.bak" "$SUDOERS_FILE"
+                log_warn "Sudoers: правка не прошла visudo, файл возвращён из копии"
+            else
+                log_warn "Sudoers: правка не прошла visudo, а копии нет — проверьте $SUDOERS_FILE"
+            fi
+            MIGRATION_FAILED=1
         fi
+    else
+        rm -f "${SUDOERS_FILE}.bak"
     fi
 fi
 
