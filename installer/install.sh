@@ -1680,7 +1680,13 @@ main_menu() {
 
     echo "" >&3
     if $installed; then
-        echo -e "    ${WHITE}Статус:${NC} ${GREEN}● УСТАНОВЛЕН${NC} (v$ver)" >&3
+        local rel=""
+        [ -f /var/lib/vpn-panel/deployed ] && rel=$(awk '{print $1}' /var/lib/vpn-panel/deployed 2>/dev/null)
+        if [ -n "$rel" ]; then
+            echo -e "    ${WHITE}Статус:${NC} ${GREEN}● УСТАНОВЛЕН${NC}  выпуск ${WHITE}${rel}${NC}, схема ${WHITE}v${ver}${NC}" >&3
+        else
+            echo -e "    ${WHITE}Статус:${NC} ${GREEN}● УСТАНОВЛЕН${NC}  схема ${WHITE}v${ver}${NC}" >&3
+        fi
         ip link show tun0 &>/dev/null && echo -e "    ${WHITE}VPN:${NC}    ${GREEN}● Активен${NC}" >&3
     else
         echo -e "    ${WHITE}Статус:${NC} ${RED}○ НЕ УСТАНОВЛЕН${NC}" >&3

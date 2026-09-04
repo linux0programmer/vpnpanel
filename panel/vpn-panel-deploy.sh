@@ -33,6 +33,10 @@ log_event() {
     chmod 666 "$EVENTS" 2>/dev/null || true
 }
 
+or_default() {
+    if [ -n "$1" ]; then printf '%s' "$1"; else printf '%s' "$2"; fi
+}
+
 conf_get() {
     [ -f "$CONF" ] || return 1
     grep "^$1=" "$CONF" 2>/dev/null | head -1 | cut -d= -f2-
@@ -556,12 +560,12 @@ list_snapshots() {
 check() {
     ensure_src >/dev/null 2>&1 || true
     fetch_src  >/dev/null 2>&1 || true
-    printf 'канал:        %s\n' "$(conf_get CHANNEL || printf 'stable')"
-    printf 'закреплён:    %s\n' "$(conf_get PINNED_TAG || printf 'нет')"
-    printf 'репозиторий:  %s\n' "$(repo_url || printf 'не задан')"
-    printf 'развёрнуто:   %s\n' "$(deployed_ref || printf 'неизвестно')"
-    printf 'версия схемы: %s\n' "$(installed_version)"
-    printf 'доступно:     %s\n' "$(target_ref 2>/dev/null || printf 'не определено')"
+    printf 'канал:        %s\n' "$(or_default "$(conf_get CHANNEL)" 'stable')"
+    printf 'закреплён:    %s\n' "$(or_default "$(conf_get PINNED_TAG)" 'нет')"
+    printf 'репозиторий:  %s\n' "$(or_default "$(repo_url)" 'не задан')"
+    printf 'развёрнуто:   %s\n' "$(or_default "$(deployed_ref)" 'неизвестно')"
+    printf 'версия схемы: %s\n' "$(or_default "$(installed_version)" 'неизвестна')"
+    printf 'доступно:     %s\n' "$(or_default "$(target_ref 2>/dev/null)" 'не определено')"
     printf 'снимков:      %s\n' "$(ls -1d "$SNAPSHOTS"/*/ 2>/dev/null | wc -l)"
 
     local ref ahead
