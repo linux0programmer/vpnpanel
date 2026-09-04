@@ -84,7 +84,7 @@ ask_var() {
     echo -ne "$1" >&3
     if [ -t 0 ]; then
         read -r "$2"
-    elif [ -r /dev/tty ]; then
+    elif [ -r /dev/tty ] && { : < /dev/tty; } 2>/dev/null; then
         read -r "$2" < /dev/tty
     else
         error_exit "Нет терминала для вопросов установщика. Скачайте файл и запустите его: curl -fsSL $RAW_URL -o install.sh && sudo bash install.sh"

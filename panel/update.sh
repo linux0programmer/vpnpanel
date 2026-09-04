@@ -32,7 +32,12 @@ UPDATE_PID=$BASHPID
     echo "============================================"
 } >> "$LOG_FILE"
 
-if [ -e /dev/tty ] && [ -w /dev/tty ]; then
+VP_HAS_TTY=0
+if [ -e /dev/tty ] && { : >/dev/tty; } 2>/dev/null; then
+    VP_HAS_TTY=1
+fi
+
+if [ "$VP_HAS_TTY" = "1" ]; then
     exec 7>/dev/tty
     exec 8>/dev/tty
     exec 3> >(stdbuf -oL tee >(stdbuf -oL sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' >> "$LOG_FILE") >&7)
@@ -44,6 +49,7 @@ fi
 
 exec 1>>"$LOG_FILE" 2>&1
 
+trap '' PIPE
 trap 'exec 3>&- 4>&- 2>/dev/null; sleep 0.2' EXIT
 
 log_info() { echo -e "${GREEN}[✓]${NC} $1" >&3; }
